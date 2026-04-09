@@ -1,0 +1,28 @@
+injection:
+  - "ignore previous"
+  - "forget your instructions"
+  - "you are now"
+  - "system prompt"
+  - "disregard"
+  - "override instructions"
+dangerous_commands:
+  - "rm -rf"
+  - "DROP TABLE"
+  - "DROP DATABASE"
+  - "--force"
+  - "chmod 777"
+  - "mkfs"
+  - ":\\(\\)\\{:\\|:&\\};:"
+secrets:
+  - "printenv"
+  - "cat.*\\.env"
+  - "echo.*\\$.*KEY"
+  - "echo.*\\$.*TOKEN"
+  - "echo.*\\$.*SECRET"
+  - "export.*TOKEN"
+  - "export.*KEY"
+escalation:
+  - "\\bsudo\\b"
+  - "\\bsu root\\b"
+  - "--privileged"
+  - "docker run.*--privileged"
