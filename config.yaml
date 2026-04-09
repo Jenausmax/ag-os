@@ -1,0 +1,31 @@
+telegram:
+  token: ""
+  allowed_users: []
+
+agents:
+  session_name: "ag-os"
+  master:
+    name: "master"
+    model: "claude-cli"
+    runtime: "host"
+    type: "permanent"
+  permanent: []
+
+docker:
+  defaults:
+    cpus: 2
+    memory: "4g"
+    network: "bridge"
+    workspace_base: "/data/ag-os/workspaces"
+    shared_dir: "/data/ag-os/shared"
+
+guard:
+  enabled: true
+  llm_enabled: true
+  haiku_api_key: ""
+
+scheduler:
+  enabled: true
+
+database:
+  path: "ag-os.db"
