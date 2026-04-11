@@ -15,17 +15,15 @@ logging.basicConfig(
 logger = logging.getLogger("ag-os")
 
 
-async def run_bot(config_path: str):
+async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
     config = load_config(config_path)
 
     db = Database(config.database.path)
     await db.init()
 
     tmux = TmuxRuntime(config.agents.session_name)
-
     manager = AgentManager(db=db, tmux_runtime=tmux)
 
-    # Создать мастер-агента если не существует
     master = await manager.get_agent("master")
     if not master:
         await manager.create_agent(
@@ -36,7 +34,6 @@ async def run_bot(config_path: str):
         )
         logger.info("Master agent created")
 
-    # Создать постоянных агентов
     for agent_def in config.agents.permanent:
         existing = await manager.get_agent(agent_def["name"])
         if not existing:
@@ -48,9 +45,34 @@ async def run_bot(config_path: str):
             )
             logger.info(f"Permanent agent '{agent_def['name']}' created")
 
+    return manager, db, config
+
+
+async def run_bot(config_path: str):
+    manager, _db, config = await bootstrap(config_path)
     app = create_bot(config.telegram, manager)
     logger.info("AG-OS bot starting...")
     await app.run_polling()
+
+
+async def run_tui(config_path: str):
+    manager, _db, _config = await bootstrap(config_path)
+    from tui.app import AgOsApp
+    app = AgOsApp(manager)
+    logger.info("AG-OS TUI starting...")
+    await app.run_async()
+
+
+async def run_all(config_path: str):
+    manager, _db, config = await bootstrap(config_path)
+    bot_app = create_bot(config.telegram, manager)
+    from tui.app import AgOsApp
+    tui_app = AgOsApp(manager)
+    logger.info("AG-OS starting (bot + TUI)...")
+    await asyncio.gather(
+        bot_app.run_polling(),
+        tui_app.run_async(),
+    )
 
 
 def main():
@@ -69,10 +91,12 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.mode in ("bot", "all"):
+    if args.mode == "bot":
         asyncio.run(run_bot(args.config))
     elif args.mode == "tui":
-        print("TUI mode — coming in Phase 3")
+        asyncio.run(run_tui(args.config))
+    elif args.mode == "all":
+        asyncio.run(run_all(args.config))
 
 
 if __name__ == "__main__":
