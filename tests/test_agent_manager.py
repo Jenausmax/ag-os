@@ -2,7 +2,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import MagicMock
 from core.agent_manager import AgentManager
-from core.models import AgentRuntime, AgentStatus
+from core.models import AgentRuntime
 from db.database import Database
 from memory.memory import MemorySystem
 

@@ -7,8 +7,7 @@ from core.agent_manager import AgentManager
 from guard.prompt_guard import PromptGuard
 
 if TYPE_CHECKING:
-    from telegram import Update
-    from telegram.ext import ContextTypes
+    pass
 
 
 def is_authorized(user_id: int, allowed_users: list[int]) -> bool:

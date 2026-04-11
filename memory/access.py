@@ -1,4 +1,3 @@
-import json
 
 def can_access(requester: str, owner: str, scope: str, shared_with: list[str]) -> bool:
     if requester == "master":

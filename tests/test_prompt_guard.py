@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from guard.prompt_guard import PromptGuard, GuardVerdict
+from guard.prompt_guard import PromptGuard
 from guard.regex_filter import RegexResult
 from guard.llm_filter import LlmResult
 

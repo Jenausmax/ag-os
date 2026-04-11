@@ -17,7 +17,7 @@ def mock_server():
 def test_init_creates_session(mock_server):
     server, session = mock_server
     server.sessions.filter.return_value = []
-    runtime = TmuxRuntime("ag-os")
+    TmuxRuntime("ag-os")
     server.new_session.assert_called_once_with(session_name="ag-os", attach=False)
 
 

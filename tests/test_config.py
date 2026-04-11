@@ -1,5 +1,4 @@
-import pytest
-from core.config import load_config, AppConfig
+from core.config import load_config
 
 
 def test_load_config(tmp_path):

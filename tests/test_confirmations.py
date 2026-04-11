@@ -1,4 +1,3 @@
-import pytest
 from telegram.confirmations import build_confirmation_message, parse_callback_data
 
 def test_build_confirmation_message():
