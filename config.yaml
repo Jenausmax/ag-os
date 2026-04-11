@@ -28,4 +28,4 @@ scheduler:
   enabled: true
 
 database:
-  path: "ag-os.db"
+  path: "/data/ag-os/db/ag-os.db"

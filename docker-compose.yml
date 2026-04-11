@@ -1,0 +1,24 @@
+services:
+  ag-os:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    image: ag-os:latest
+    container_name: ag-os
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    volumes:
+      # Доступ к хостовому Docker — чтобы создавать sibling-контейнеры для sub-агентов
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Идентичные пути внутри и снаружи — критично для sibling-контейнеров
+      - /data/ag-os/workspaces:/data/ag-os/workspaces
+      - /data/ag-os/shared:/data/ag-os/shared
+      - /data/ag-os/db:/data/ag-os/db
+      # Логин Claude Code CLI — переживает рестарты
+      - claude-config:/root/.claude
+      # Конфиг проекта — редактируется на хосте
+      - ./config.yaml:/app/config.yaml:ro
+
+volumes:
+  claude-config:

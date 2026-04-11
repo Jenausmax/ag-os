@@ -18,27 +18,47 @@ AG-OS — мульти-агентный оркестратор для управ
 - **LLM-фильтр:** Claude Haiku API
 - **Конфигурация:** YAML (config.yaml)
 
+## Установка
+
+Пользователь ставит проект через интерактивные скрипты:
+
+- `scripts/setup.sh` — Linux / macOS / WSL2. Меню: `native` (tmux + venv на хосте) или `docker` (всё в контейнере).
+- `scripts/setup.ps1` — Windows. Детектит WSL2 и Docker Desktop, маршрутизирует.
+
+Подробности — в `README.md`.
+
 ## Команды
 
 ```bash
-# Запуск Telegram-бота
-python main.py bot --config config.yaml
+# Установка (интерактивный скрипт)
+bash scripts/setup.sh               # Linux/macOS/WSL
+powershell scripts/setup.ps1        # Windows
 
-# Запуск TUI-дашборда
-python main.py tui --config config.yaml
+# Запуск (native)
+python main.py bot --config config.yaml   # только Telegram-бот
+python main.py tui --config config.yaml   # только TUI
+python main.py all --config config.yaml   # бот + TUI параллельно
 
-# Запуск всего вместе
-python main.py all --config config.yaml
+# Запуск (docker)
+docker compose run --rm ag-os claude login   # первый логин Claude Code CLI
+docker compose up -d ag-os                    # бот в фоне
+docker compose logs -f ag-os                  # логи
 
-# Установка зависимостей
-pip install -r requirements.txt
-
-# Запуск тестов
+# Тесты
 pytest tests/
-
-# Запуск одного теста
 pytest tests/test_agent_manager.py -v
 ```
+
+## Docker-сборка
+
+Проект использует **два** Dockerfile:
+
+- `Dockerfile.agent` → тег `ag-os-full:latest` — образ для sub-агентов, которые запускает `DockerRuntime`. Ubuntu + Claude Code CLI.
+- `Dockerfile.app` → тег `ag-os:latest` — образ для самого AG-OS (бот + TUI). Python 3.11-slim + tmux + Claude Code CLI + зависимости.
+
+В docker-режиме AG-OS монтирует `/var/run/docker.sock` хоста и создаёт sub-агентов как **sibling-контейнеры** (не через DinD). Критично: пути к workspace-ам (`/data/ag-os/workspaces`) монтируются **идентично** внутри и снаружи, иначе sibling-контейнеры получат битые volume-пути.
+
+Логин Claude Code CLI хранится в named volume `claude-config` (`/root/.claude` внутри контейнера) и переживает рестарты.
 
 ## Архитектура
 
