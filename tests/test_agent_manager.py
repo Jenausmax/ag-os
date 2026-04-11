@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from core.agent_manager import AgentManager
 from core.models import AgentRuntime, AgentStatus
 from db.database import Database
+from memory.memory import MemorySystem
 
 
 @pytest_asyncio.fixture
@@ -68,6 +69,38 @@ async def test_read_output(manager, mock_tmux):
     await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)
     output = await manager.read_output("jira")
     assert output == "output text"
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_injects_memory_context(db, mock_tmux):
+    memory = MemorySystem(db)
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, memory=memory)
+    await mgr.create_agent("jira", "claude-cli", AgentRuntime.HOST)
+    await memory.remember("jira", "project", "AGOS", scope="private")
+    await memory.remember("master", "rule", "no force push", scope="global")
+    await mgr.send_prompt("jira", "do the thing")
+    sent = mock_tmux.send_prompt.call_args[0][1]
+    assert "[Memory] project: AGOS" in sent
+    assert "[Memory] rule: no force push" in sent
+    assert sent.endswith("do the thing")
+    agent = await mgr.get_agent("jira")
+    assert agent["current_task"] == "do the thing"
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_empty_memory_no_preamble(db, mock_tmux):
+    memory = MemorySystem(db)
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, memory=memory)
+    await mgr.create_agent("jira", "claude-cli", AgentRuntime.HOST)
+    await mgr.send_prompt("jira", "hello")
+    mock_tmux.send_prompt.assert_called_once_with("jira", "hello")
+
+
+@pytest.mark.asyncio
+async def test_send_prompt_no_memory_backward_compat(manager, mock_tmux):
+    await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)
+    await manager.send_prompt("jira", "hello")
+    mock_tmux.send_prompt.assert_called_once_with("jira", "hello")
 
 
 @pytest.mark.asyncio

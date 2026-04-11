@@ -2,13 +2,21 @@ import json
 from core.models import AgentRuntime, AgentStatus
 from db.database import Database
 from runtime.base import BaseRuntime
+from memory.memory import MemorySystem
 
 
 class AgentManager:
-    def __init__(self, db: Database, tmux_runtime: BaseRuntime | None = None, docker_runtime: BaseRuntime | None = None):
+    def __init__(
+        self,
+        db: Database,
+        tmux_runtime: BaseRuntime | None = None,
+        docker_runtime: BaseRuntime | None = None,
+        memory: MemorySystem | None = None,
+    ):
         self.db = db
         self._tmux = tmux_runtime
         self._docker = docker_runtime
+        self._memory = memory
 
     def _get_runtime(self, runtime: AgentRuntime) -> BaseRuntime:
         if runtime == AgentRuntime.HOST:
@@ -44,7 +52,13 @@ class AgentManager:
         if not agent:
             raise ValueError(f"Agent '{name}' not found")
         rt = self._get_runtime(AgentRuntime(agent["runtime"]))
-        rt.send_prompt(name, prompt)
+        final_prompt = prompt
+        if self._memory:
+            context = await self._memory.get_context(name)
+            if context:
+                memory_lines = [f"[Memory] {r['key']}: {r['value']}" for r in context]
+                final_prompt = "\n".join(memory_lines) + "\n\n" + prompt
+        rt.send_prompt(name, final_prompt)
         await self.db.execute("UPDATE agents SET status = ?, current_task = ? WHERE name = ?", (AgentStatus.WORKING.value, prompt, name))
 
     async def read_output(self, name: str, lines: int = 50) -> str:
