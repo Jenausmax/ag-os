@@ -2,7 +2,7 @@
 id: AGOS-0018
 title: Docker Runtime
 phase: 6 — Docker
-status: pending
+status: done
 depends_on: [AGOS-0005]
 files_create: [runtime/docker_runtime.py, tests/test_docker_runtime.py, Dockerfile]
 files_modify: []
