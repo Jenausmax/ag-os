@@ -165,6 +165,70 @@ async def test_create_agent_missing_api_key_env_fails_fast(db, mock_tmux, monkey
     mock_tmux.create_agent.assert_not_called()
 
 
+def test_validate_provider_subscription_warns_without_claude_dir(db, mock_tmux, monkeypatch, tmp_path, caplog):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux)
+    with caplog.at_level("WARNING"):
+        mgr.validate_provider("", AgentRuntime.HOST)
+    assert any("claude login" in rec.message.lower() or "claude" in rec.message for rec in caplog.records)
+
+
+def test_validate_provider_fails_fast_on_missing_env(db, mock_tmux, monkeypatch):
+    monkeypatch.delenv("AGOS_TEST_KEY", raising=False)
+    providers = {
+        "broken": {
+            "provider": "anthropic_compatible",
+            "base_url": "http://x",
+            "api_key_env": "AGOS_TEST_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    with pytest.raises(ValueError, match="AGOS_TEST_KEY"):
+        mgr.validate_provider("broken", AgentRuntime.HOST)
+
+
+def test_validate_provider_ok_with_env(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("AGOS_TEST_KEY", "k")
+    providers = {
+        "ok": {
+            "provider": "anthropic_compatible",
+            "base_url": "http://x",
+            "api_key_env": "AGOS_TEST_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    mgr.validate_provider("ok", AgentRuntime.HOST)  # no raise
+
+
+def test_apply_provider_env_reexports_to_existing_window(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("AGOS_TEST_KEY", "secret")
+    mock_tmux.apply_env = MagicMock()
+    providers = {
+        "zai": {
+            "provider": "anthropic_compatible",
+            "base_url": "https://z.example",
+            "model_name": "glm-4.6",
+            "api_key_env": "AGOS_TEST_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    mgr.apply_provider_env("master", "zai", AgentRuntime.HOST)
+    mock_tmux.apply_env.assert_called_once()
+    name, env = mock_tmux.apply_env.call_args.args
+    assert name == "master"
+    assert env["ANTHROPIC_BASE_URL"] == "https://z.example"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "secret"
+    assert env["ANTHROPIC_MODEL"] == "glm-4.6"
+
+
+def test_apply_provider_env_subscription_noop(db, mock_tmux):
+    mock_tmux.apply_env = MagicMock()
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux)
+    mgr.apply_provider_env("master", "", AgentRuntime.HOST)
+    mock_tmux.apply_env.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_create_agent_unknown_provider(db, mock_tmux):
     mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers={})

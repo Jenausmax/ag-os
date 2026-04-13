@@ -4,6 +4,7 @@ import logging
 
 from core.config import load_config
 from core.agent_manager import AgentManager
+from core.models import AgentRuntime
 from db.database import Database
 from runtime.tmux_runtime import TmuxRuntime
 from telegram.bot import create_bot
@@ -22,28 +23,49 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
     await db.init()
 
     tmux = TmuxRuntime(config.agents.session_name)
-    manager = AgentManager(db=db, tmux_runtime=tmux)
+    manager = AgentManager(
+        db=db,
+        tmux_runtime=tmux,
+        model_providers=config.model_providers,
+    )
+
+    master_provider = config.agents.master.model_provider
+    manager.validate_provider(master_provider, AgentRuntime.HOST)
+    for agent_def in config.agents.permanent:
+        runtime_str = agent_def.get("runtime", "host")
+        manager.validate_provider(
+            agent_def.get("model_provider", ""),
+            AgentRuntime(runtime_str),
+        )
 
     master = await manager.get_agent("master")
     if not master:
         await manager.create_agent(
             name="master",
             model=config.agents.master.model,
-            runtime="host",
+            runtime=AgentRuntime.HOST,
             agent_type="permanent",
+            provider_name=master_provider,
         )
-        logger.info("Master agent created")
+        logger.info("Master agent created (provider=%s)", master_provider or "claude-subscription")
+    else:
+        manager.apply_provider_env("master", master_provider, AgentRuntime.HOST)
 
     for agent_def in config.agents.permanent:
         existing = await manager.get_agent(agent_def["name"])
+        runtime_enum = AgentRuntime(agent_def.get("runtime", "host"))
+        provider = agent_def.get("model_provider", "")
         if not existing:
             await manager.create_agent(
                 name=agent_def["name"],
                 model=agent_def.get("model", "claude-cli"),
-                runtime=agent_def.get("runtime", "host"),
+                runtime=runtime_enum,
                 agent_type="permanent",
+                provider_name=provider,
             )
             logger.info(f"Permanent agent '{agent_def['name']}' created")
+        elif runtime_enum == AgentRuntime.HOST:
+            manager.apply_provider_env(agent_def["name"], provider, runtime_enum)
 
     return manager, db, config
 

@@ -1,9 +1,13 @@
 import json
+import logging
 import os
+from pathlib import Path
 from core.models import AgentRuntime, AgentStatus, ModelBinding, ModelProvider
 from db.database import Database
 from runtime.base import BaseRuntime
 from memory.memory import MemorySystem
+
+logger = logging.getLogger(__name__)
 
 
 class AgentManager:
@@ -62,6 +66,54 @@ class AgentManager:
                 env["ANTHROPIC_SMALL_FAST_MODEL"] = binding.small_fast_model
             return env
         return {}
+
+    def validate_provider(self, provider_name: str, runtime: AgentRuntime) -> None:
+        """Проверить провайдера на старте — до запуска бота.
+
+        Для не-подписочных провайдеров вызывает `_build_agent_env` — тот падает
+        с понятной ошибкой, если не хватает env-переменной или base_url. Для
+        подписочного провайдера на host-runtime предупреждает, если `~/.claude`
+        отсутствует (не фатально — пользователь может залогиниться после).
+        """
+        binding = self._resolve_binding(provider_name)
+        if binding.provider == ModelProvider.CLAUDE_SUBSCRIPTION:
+            if runtime == AgentRuntime.HOST:
+                claude_dir = Path.home() / ".claude"
+                if not claude_dir.exists():
+                    logger.warning(
+                        "Claude Code CLI не залогинен (%s не существует). "
+                        "Запусти `claude login` до отправки промтов мастеру.",
+                        claude_dir,
+                    )
+            return
+        self._build_agent_env(binding)
+
+    def apply_provider_env(self, name: str, provider_name: str, runtime: AgentRuntime) -> None:
+        """Переэкспортировать env провайдера в уже существующий runtime агента.
+
+        Нужно при рестарте AG-OS: мастер-окно tmux переживает рестарт, но после
+        изменения конфига env в окне становится устаревшим. Для host-runtime —
+        делает `export KEY=VALUE` в окне. Для docker-runtime — no-op (у запущенного
+        контейнера env не меняется, надо пересоздавать агента).
+        """
+        binding = self._resolve_binding(provider_name)
+        env = self._build_agent_env(binding)
+        if runtime != AgentRuntime.HOST:
+            if env:
+                logger.warning(
+                    "Agent '%s' running in docker runtime — env re-apply skipped. "
+                    "Recreate the container to change provider.",
+                    name,
+                )
+            return
+        if not env:
+            return
+        rt = self._get_runtime(runtime)
+        apply = getattr(rt, "apply_env", None)
+        if apply is None:
+            return
+        apply(name, env)
+        logger.info("Re-applied provider '%s' env to agent '%s'", provider_name, name)
 
     def _get_runtime(self, runtime: AgentRuntime) -> BaseRuntime:
         if runtime == AgentRuntime.HOST:

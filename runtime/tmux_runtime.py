@@ -21,6 +21,14 @@ class TmuxRuntime(BaseRuntime):
             window.active_pane.send_keys(command)
         return window.name
 
+    def apply_env(self, name: str, env: dict[str, str]) -> None:
+        windows = self._session.windows.filter(window_name=name)
+        if not windows:
+            raise ValueError(f"Agent '{name}' not found")
+        pane = windows[0].active_pane
+        for key, value in env.items():
+            pane.send_keys(f"export {key}={value}")
+
     def destroy_agent(self, name: str) -> None:
         windows = self._session.windows.filter(window_name=name)
         if windows:

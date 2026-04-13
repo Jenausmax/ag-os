@@ -67,6 +67,43 @@ def test_read_output(mock_server):
     assert output == "line1\nline2"
 
 
+def test_create_agent_exports_env_before_command(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    window = MagicMock()
+    pane = MagicMock()
+    window.active_pane = pane
+    session.new_window.return_value = window
+    runtime = TmuxRuntime("ag-os")
+    runtime.create_agent("master", "claude", env={"ANTHROPIC_API_KEY": "sk-x"})
+    calls = [c.args[0] for c in pane.send_keys.call_args_list]
+    assert "export ANTHROPIC_API_KEY=sk-x" in calls
+    assert calls.index("export ANTHROPIC_API_KEY=sk-x") < calls.index("claude")
+
+
+def test_apply_env_to_existing_window(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    window = MagicMock()
+    pane = MagicMock()
+    window.active_pane = pane
+    session.windows.filter.return_value = [window]
+    runtime = TmuxRuntime("ag-os")
+    runtime.apply_env("master", {"ANTHROPIC_BASE_URL": "http://x", "ANTHROPIC_AUTH_TOKEN": "k"})
+    calls = [c.args[0] for c in pane.send_keys.call_args_list]
+    assert "export ANTHROPIC_BASE_URL=http://x" in calls
+    assert "export ANTHROPIC_AUTH_TOKEN=k" in calls
+
+
+def test_apply_env_missing_window_raises(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    session.windows.filter.return_value = []
+    runtime = TmuxRuntime("ag-os")
+    with pytest.raises(ValueError, match="not found"):
+        runtime.apply_env("ghost", {"K": "v"})
+
+
 def test_list_agents(mock_server):
     server, session = mock_server
     server.sessions.filter.return_value = [session]
