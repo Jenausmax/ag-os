@@ -1,5 +1,6 @@
 import json
-from core.models import AgentRuntime, AgentStatus
+import os
+from core.models import AgentRuntime, AgentStatus, ModelBinding, ModelProvider
 from db.database import Database
 from runtime.base import BaseRuntime
 from memory.memory import MemorySystem
@@ -12,11 +13,55 @@ class AgentManager:
         tmux_runtime: BaseRuntime | None = None,
         docker_runtime: BaseRuntime | None = None,
         memory: MemorySystem | None = None,
+        model_providers: dict[str, dict] | None = None,
     ):
         self.db = db
         self._tmux = tmux_runtime
         self._docker = docker_runtime
         self._memory = memory
+        self._model_providers = model_providers or {}
+
+    def _resolve_binding(self, provider_name: str) -> ModelBinding:
+        if not provider_name:
+            return ModelBinding()
+        raw = self._model_providers.get(provider_name)
+        if raw is None:
+            raise ValueError(f"Unknown model provider '{provider_name}'")
+        provider_value = raw.get("provider", ModelProvider.CLAUDE_SUBSCRIPTION.value)
+        return ModelBinding(
+            provider=ModelProvider(provider_value),
+            model_name=raw.get("model_name", ""),
+            base_url=raw.get("base_url", ""),
+            api_key_env=raw.get("api_key_env", ""),
+            small_fast_model=raw.get("small_fast_model", ""),
+        )
+
+    def _build_agent_env(self, binding: ModelBinding) -> dict[str, str]:
+        if binding.provider == ModelProvider.CLAUDE_SUBSCRIPTION:
+            return {}
+        if not binding.api_key_env:
+            raise ValueError("api_key_env is required for non-subscription providers")
+        api_key = os.environ.get(binding.api_key_env)
+        if not api_key:
+            raise ValueError(f"Environment variable '{binding.api_key_env}' is not set")
+        if binding.provider == ModelProvider.ANTHROPIC_API:
+            env = {"ANTHROPIC_API_KEY": api_key}
+            if binding.model_name:
+                env["ANTHROPIC_MODEL"] = binding.model_name
+            return env
+        if binding.provider == ModelProvider.ANTHROPIC_COMPATIBLE:
+            if not binding.base_url:
+                raise ValueError("base_url is required for anthropic_compatible provider")
+            env = {
+                "ANTHROPIC_BASE_URL": binding.base_url,
+                "ANTHROPIC_AUTH_TOKEN": api_key,
+            }
+            if binding.model_name:
+                env["ANTHROPIC_MODEL"] = binding.model_name
+            if binding.small_fast_model:
+                env["ANTHROPIC_SMALL_FAST_MODEL"] = binding.small_fast_model
+            return env
+        return {}
 
     def _get_runtime(self, runtime: AgentRuntime) -> BaseRuntime:
         if runtime == AgentRuntime.HOST:
@@ -27,15 +72,28 @@ class AgentManager:
             raise RuntimeError("docker runtime not configured")
         return self._docker
 
-    async def create_agent(self, name: str, model: str, runtime: AgentRuntime, agent_type: str = "dynamic", config: dict | None = None) -> dict:
+    async def create_agent(
+        self,
+        name: str,
+        model: str,
+        runtime: AgentRuntime,
+        agent_type: str = "dynamic",
+        config: dict | None = None,
+        provider_name: str = "",
+    ) -> dict:
         existing = await self.db.fetch_one("SELECT id FROM agents WHERE name = ?", (name,))
         if existing:
             raise ValueError(f"Agent '{name}' already exists")
+        binding = self._resolve_binding(provider_name)
+        env = self._build_agent_env(binding)
         rt = self._get_runtime(runtime)
-        rt.create_agent(name)
+        rt.create_agent(name, env=env)
+        stored_config = dict(config or {})
+        if provider_name:
+            stored_config["model_provider"] = provider_name
         await self.db.execute(
             "INSERT INTO agents (name, model, runtime, type, status, tmux_window, config) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (name, model, runtime.value, agent_type, AgentStatus.IDLE.value, name if runtime == AgentRuntime.HOST else "", json.dumps(config or {})),
+            (name, model, runtime.value, agent_type, AgentStatus.IDLE.value, name if runtime == AgentRuntime.HOST else "", json.dumps(stored_config)),
         )
         return await self.get_agent(name)
 

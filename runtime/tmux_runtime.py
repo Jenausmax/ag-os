@@ -12,8 +12,11 @@ class TmuxRuntime(BaseRuntime):
         else:
             self._session = self._server.new_session(session_name=session_name, attach=False)
 
-    def create_agent(self, name: str, command: str = "") -> str:
+    def create_agent(self, name: str, command: str = "", env: dict[str, str] | None = None) -> str:
         window = self._session.new_window(window_name=name, attach=False)
+        if env:
+            for key, value in env.items():
+                window.active_pane.send_keys(f"export {key}={value}")
         if command:
             window.active_pane.send_keys(command)
         return window.name

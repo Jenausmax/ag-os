@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     tty: true
     stdin_open: true
+    networks:
+      - ag-os-net
     volumes:
       # Доступ к хостовому Docker — чтобы создавать sibling-контейнеры для sub-агентов
       - /var/run/docker.sock:/var/run/docker.sock
@@ -19,6 +21,27 @@ services:
       - claude-config:/root/.claude
       # Конфиг проекта — редактируется на хосте
       - ./config.yaml:/app/config.yaml:ro
+
+  # LiteLLM-прокси для локальных/openai-совместимых моделей. По умолчанию
+  # не стартует — поднимается через профиль: `docker compose --profile local-models up -d litellm`.
+  litellm:
+    profiles: ["local-models"]
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: ag-os-litellm
+    restart: unless-stopped
+    networks:
+      - ag-os-net
+    command: ["--config", "/config/litellm.yaml", "--port", "4000"]
+    volumes:
+      - ./deploy/litellm.yaml:/config/litellm.yaml:ro
+    extra_hosts:
+      # Чтобы litellm-контейнер дотягивался до хостового Ollama (`ollama serve` на порту 11434).
+      - "host.docker.internal:host-gateway"
+
+networks:
+  ag-os-net:
+    name: ag-os-net
+    driver: bridge
 
 volumes:
   claude-config:

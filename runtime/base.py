@@ -3,8 +3,12 @@ from abc import ABC, abstractmethod
 
 class BaseRuntime(ABC):
     @abstractmethod
-    def create_agent(self, name: str, command: str = "") -> str:
-        """Создать агента, вернуть идентификатор."""
+    def create_agent(self, name: str, command: str = "", env: dict[str, str] | None = None) -> str:
+        """Создать агента, вернуть идентификатор.
+
+        ``env`` — переменные окружения агента (для перенаправления Claude Code CLI
+        на альтернативный API через ANTHROPIC_BASE_URL и т.п.).
+        """
 
     @abstractmethod
     def destroy_agent(self, name: str) -> None:

@@ -14,6 +14,7 @@ class AgentDef:
     model: str = "claude-cli"
     runtime: str = "host"
     type: str = "permanent"
+    model_provider: str = ""
 
 @dataclass
 class AgentsConfig:
@@ -25,7 +26,7 @@ class AgentsConfig:
 class DockerDefaults:
     cpus: int = 2
     memory: str = "4g"
-    network: str = "bridge"
+    network: str = "ag-os-net"
     workspace_base: str = "/data/ag-os/workspaces"
     shared_dir: str = "/data/ag-os/shared"
 
@@ -50,6 +51,7 @@ class AppConfig:
     docker: DockerConfig = field(default_factory=DockerConfig)
     guard: GuardConfig = field(default_factory=GuardConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
+    model_providers: dict = field(default_factory=dict)
 
 def _dict_to_dataclass(cls, data: dict):
     if data is None:

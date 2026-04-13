@@ -104,6 +104,75 @@ async def test_send_prompt_no_memory_backward_compat(manager, mock_tmux):
 
 
 @pytest.mark.asyncio
+async def test_create_agent_subscription_no_env(db, mock_tmux):
+    providers = {"claude-sub": {"provider": "claude_subscription"}}
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    await mgr.create_agent("jira", "claude-cli", AgentRuntime.HOST, provider_name="claude-sub")
+    kwargs = mock_tmux.create_agent.call_args.kwargs
+    assert kwargs["env"] == {}
+
+
+@pytest.mark.asyncio
+async def test_create_agent_anthropic_api(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    providers = {
+        "anth": {
+            "provider": "anthropic_api",
+            "api_key_env": "ANTHROPIC_API_KEY",
+            "model_name": "claude-sonnet-4-5",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    await mgr.create_agent("jira", "claude-cli", AgentRuntime.HOST, provider_name="anth")
+    env = mock_tmux.create_agent.call_args.kwargs["env"]
+    assert env["ANTHROPIC_API_KEY"] == "sk-test"
+    assert env["ANTHROPIC_MODEL"] == "claude-sonnet-4-5"
+    assert "ANTHROPIC_BASE_URL" not in env
+
+
+@pytest.mark.asyncio
+async def test_create_agent_anthropic_compatible(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("ZAI_API_KEY", "zai-xyz")
+    providers = {
+        "zai": {
+            "provider": "anthropic_compatible",
+            "base_url": "https://api.z.ai/anthropic",
+            "model_name": "glm-4.6",
+            "api_key_env": "ZAI_API_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    await mgr.create_agent("coder", "glm", AgentRuntime.HOST, provider_name="zai")
+    env = mock_tmux.create_agent.call_args.kwargs["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "https://api.z.ai/anthropic"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "zai-xyz"
+    assert env["ANTHROPIC_MODEL"] == "glm-4.6"
+
+
+@pytest.mark.asyncio
+async def test_create_agent_missing_api_key_env_fails_fast(db, mock_tmux, monkeypatch):
+    monkeypatch.delenv("MISSING_KEY", raising=False)
+    providers = {
+        "broken": {
+            "provider": "anthropic_compatible",
+            "base_url": "http://x",
+            "api_key_env": "MISSING_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    with pytest.raises(ValueError, match="MISSING_KEY"):
+        await mgr.create_agent("broken", "x", AgentRuntime.HOST, provider_name="broken")
+    mock_tmux.create_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_agent_unknown_provider(db, mock_tmux):
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers={})
+    with pytest.raises(ValueError, match="Unknown model provider"):
+        await mgr.create_agent("x", "y", AgentRuntime.HOST, provider_name="ghost")
+
+
+@pytest.mark.asyncio
 async def test_list_agents(manager):
     await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)
     await manager.create_agent("code", "claude-cli", AgentRuntime.HOST)

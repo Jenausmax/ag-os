@@ -26,7 +26,7 @@ class DockerRuntime(BaseRuntime):
     def _container_name(self, name: str) -> str:
         return f"{self.prefix}-{name}"
 
-    def create_agent(self, name: str, command: str = "") -> str:
+    def create_agent(self, name: str, command: str = "", env: dict[str, str] | None = None) -> str:
         container_name = self._container_name(name)
         volumes = {
             f"{self.workspace_base}/{name}": {"bind": "/workspace", "mode": "rw"},
@@ -41,6 +41,7 @@ class DockerRuntime(BaseRuntime):
             mem_limit=self.memory,
             network=self.network,
             volumes=volumes,
+            environment=env or {},
         )
         return container.id
 

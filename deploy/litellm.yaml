@@ -1,0 +1,26 @@
+# LiteLLM-прокси: принимает запросы в формате Anthropic и роутит в целевые модели.
+# Запуск: `docker compose --profile local-models up -d litellm`.
+# Sub-агент с `base_url: http://litellm:4000` будет обращаться сюда вместо api.anthropic.com.
+
+model_list:
+  # Локальная Ollama на хосте. `host.docker.internal` резолвится через extra_hosts в compose.
+  - model_name: ollama/llama3.1
+    litellm_params:
+      model: ollama/llama3.1
+      api_base: http://host.docker.internal:11434
+
+  # Qwen2.5-Coder — пример для агента, который пишет код.
+  - model_name: ollama/qwen2.5-coder
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://host.docker.internal:11434
+
+  # OpenAI как пример — ключ берётся из переменной окружения хоста.
+  - model_name: openai/gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+general_settings:
+  # Используется как ANTHROPIC_AUTH_TOKEN у агента. Меняй на свой.
+  master_key: sk-litellm-local-change-me

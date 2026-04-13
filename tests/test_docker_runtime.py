@@ -84,6 +84,34 @@ def test_agent_exists_false(mock_docker):
     assert runtime.agent_exists("test") is False
 
 
+def test_create_agent_passes_env(mock_docker):
+    container = MagicMock()
+    container.id = "abc123"
+    mock_docker.containers.run.return_value = container
+
+    runtime = DockerRuntime(prefix="ag-os")
+    runtime.create_agent(
+        "test",
+        env={"ANTHROPIC_BASE_URL": "http://litellm:4000", "ANTHROPIC_AUTH_TOKEN": "k"},
+    )
+
+    kwargs = mock_docker.containers.run.call_args.kwargs
+    assert kwargs["environment"]["ANTHROPIC_BASE_URL"] == "http://litellm:4000"
+    assert kwargs["environment"]["ANTHROPIC_AUTH_TOKEN"] == "k"
+
+
+def test_create_agent_empty_env_default(mock_docker):
+    container = MagicMock()
+    container.id = "abc123"
+    mock_docker.containers.run.return_value = container
+
+    runtime = DockerRuntime(prefix="ag-os")
+    runtime.create_agent("test")
+
+    kwargs = mock_docker.containers.run.call_args.kwargs
+    assert kwargs["environment"] == {}
+
+
 def test_send_prompt_escapes_quotes(mock_docker):
     container = MagicMock()
     mock_docker.containers.get.return_value = container

@@ -9,13 +9,49 @@ agents:
     model: "claude-cli"
     runtime: "host"
     type: "permanent"
+    # model_provider: "claude-sub"   # ссылка на ключ из model_providers ниже
   permanent: []
+
+# Провайдеры моделей для sub-агентов. Ключи используются в поле
+# `model_provider` у агента. Секреты НЕ хранятся здесь — только имя
+# переменной окружения через `api_key_env`.
+model_providers:
+  # Подписка Claude Code CLI — дефолт, ничего настраивать не надо.
+  claude-sub:
+    provider: "claude_subscription"
+
+  # Официальный Anthropic API по ключу.
+  # anthropic-api:
+  #   provider: "anthropic_api"
+  #   api_key_env: "ANTHROPIC_API_KEY"
+  #   model_name: "claude-sonnet-4-5"
+
+  # z.ai (GLM) — anthropic-совместимый эндпоинт под Claude Code.
+  # zai-glm:
+  #   provider: "anthropic_compatible"
+  #   base_url: "https://<endpoint-из-доки-zai>"
+  #   model_name: "glm-4.6"
+  #   api_key_env: "ZAI_API_KEY"
+
+  # MiniMax — anthropic-совместимый эндпоинт.
+  # minimax:
+  #   provider: "anthropic_compatible"
+  #   base_url: "https://<endpoint-из-доки-minimax>"
+  #   model_name: "MiniMax-M2"
+  #   api_key_env: "MINIMAX_API_KEY"
+
+  # Локальная Ollama через LiteLLM-прокси (см. docker-compose профиль local-models).
+  # ollama-local:
+  #   provider: "anthropic_compatible"
+  #   base_url: "http://litellm:4000"
+  #   model_name: "ollama/llama3.1"
+  #   api_key_env: "LITELLM_KEY"
 
 docker:
   defaults:
     cpus: 2
     memory: "4g"
-    network: "bridge"
+    network: "ag-os-net"
     workspace_base: "/data/ag-os/workspaces"
     shared_dir: "/data/ag-os/shared"
 
