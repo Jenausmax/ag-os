@@ -236,6 +236,72 @@ async def test_create_agent_unknown_provider(db, mock_tmux):
         await mgr.create_agent("x", "y", AgentRuntime.HOST, provider_name="ghost")
 
 
+def test_build_llm_credentials_anthropic_api(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("AGOS_TEST_KEY", "sk-x")
+    providers = {
+        "api": {
+            "provider": "anthropic_api",
+            "api_key_env": "AGOS_TEST_KEY",
+            "model_name": "claude-haiku-4-5",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    creds = mgr.build_llm_credentials("api")
+    assert creds["api_key"] == "sk-x"
+    assert creds["base_url"] == ""
+    assert creds["model_name"] == "claude-haiku-4-5"
+
+
+def test_build_llm_credentials_anthropic_compatible(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("AGOS_TEST_KEY", "zai-k")
+    providers = {
+        "zai": {
+            "provider": "anthropic_compatible",
+            "base_url": "https://z.example",
+            "model_name": "glm-4.6",
+            "api_key_env": "AGOS_TEST_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    creds = mgr.build_llm_credentials("zai")
+    assert creds["api_key"] == "zai-k"
+    assert creds["base_url"] == "https://z.example"
+    assert creds["model_name"] == "glm-4.6"
+
+
+def test_build_llm_credentials_subscription_rejected(db, mock_tmux):
+    providers = {"sub": {"provider": "claude_subscription"}}
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    with pytest.raises(ValueError, match="CLI-only"):
+        mgr.build_llm_credentials("sub")
+
+
+def test_build_llm_credentials_missing_env_fails(db, mock_tmux, monkeypatch):
+    monkeypatch.delenv("AGOS_MISSING", raising=False)
+    providers = {
+        "broken": {
+            "provider": "anthropic_api",
+            "api_key_env": "AGOS_MISSING",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    with pytest.raises(ValueError, match="AGOS_MISSING"):
+        mgr.build_llm_credentials("broken")
+
+
+def test_build_llm_credentials_compatible_requires_base_url(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("AGOS_TEST_KEY", "k")
+    providers = {
+        "bad": {
+            "provider": "anthropic_compatible",
+            "api_key_env": "AGOS_TEST_KEY",
+        }
+    }
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    with pytest.raises(ValueError, match="base_url"):
+        mgr.build_llm_credentials("bad")
+
+
 @pytest.mark.asyncio
 async def test_list_agents(manager):
     await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)

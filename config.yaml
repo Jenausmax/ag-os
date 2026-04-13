@@ -58,7 +58,13 @@ docker:
 guard:
   enabled: true
   llm_enabled: true
+  # Один из двух вариантов (не оба):
+  #   1) legacy: явный ключ Anthropic Haiku.
   haiku_api_key: ""
+  #   2) ссылка на провайдера из model_providers ниже. Поддерживаются
+  #      anthropic_api и anthropic_compatible (z.ai, MiniMax, litellm).
+  #      claude_subscription нельзя — Python SDK требует API-ключ.
+  # model_provider: "anthropic-api"
 
 scheduler:
   enabled: true

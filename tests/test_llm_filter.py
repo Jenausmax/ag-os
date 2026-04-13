@@ -42,3 +42,27 @@ async def test_api_error_returns_suspicious(mock_anthropic):
     f = LlmFilter(api_key="test-key")
     result = await f.check("hello")
     assert result == LlmResult.SUSPICIOUS
+
+
+def test_base_url_passed_to_sdk():
+    with patch("guard.llm_filter.anthropic.AsyncAnthropic") as mock_cls:
+        LlmFilter(api_key="k", base_url="https://z.example", model="glm-4.6")
+        mock_cls.assert_called_once_with(api_key="k", base_url="https://z.example")
+
+
+def test_no_base_url_default_anthropic():
+    with patch("guard.llm_filter.anthropic.AsyncAnthropic") as mock_cls:
+        LlmFilter(api_key="k")
+        kwargs = mock_cls.call_args.kwargs
+        assert kwargs["api_key"] == "k"
+        assert "base_url" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_custom_model_used(mock_anthropic):
+    response = MagicMock()
+    response.content = [MagicMock(text="SAFE")]
+    mock_anthropic.messages.create.return_value = response
+    f = LlmFilter(api_key="k", model="glm-4.6")
+    await f.check("hi")
+    assert mock_anthropic.messages.create.call_args.kwargs["model"] == "glm-4.6"

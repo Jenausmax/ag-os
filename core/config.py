@@ -39,6 +39,7 @@ class GuardConfig:
     enabled: bool = True
     llm_enabled: bool = True
     haiku_api_key: str = ""
+    model_provider: str = ""
 
 @dataclass
 class DatabaseConfig:

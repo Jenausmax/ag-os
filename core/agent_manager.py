@@ -67,6 +67,34 @@ class AgentManager:
             return env
         return {}
 
+    def build_llm_credentials(self, provider_name: str) -> dict:
+        """Вернуть параметры для Python-SDK клиента (guard, вспомогательные тулы).
+
+        В отличие от `_build_agent_env` — не выставляет env для дочернего процесса,
+        а возвращает явные поля, которые SDK принимает в конструкторе. Subscription
+        не поддерживается: Python-SDK Anthropic требует API-ключ, `claude login`
+        к нему не применим.
+        """
+        binding = self._resolve_binding(provider_name)
+        if binding.provider == ModelProvider.CLAUDE_SUBSCRIPTION:
+            raise ValueError(
+                "claude_subscription provider is CLI-only and cannot be used for "
+                "Python SDK clients (e.g. Prompt Guard). Use anthropic_api or "
+                "anthropic_compatible instead."
+            )
+        if not binding.api_key_env:
+            raise ValueError("api_key_env is required for SDK provider")
+        api_key = os.environ.get(binding.api_key_env)
+        if not api_key:
+            raise ValueError(f"Environment variable '{binding.api_key_env}' is not set")
+        if binding.provider == ModelProvider.ANTHROPIC_COMPATIBLE and not binding.base_url:
+            raise ValueError("base_url is required for anthropic_compatible provider")
+        return {
+            "api_key": api_key,
+            "base_url": binding.base_url,
+            "model_name": binding.model_name,
+        }
+
     def validate_provider(self, provider_name: str, runtime: AgentRuntime) -> None:
         """Проверить провайдера на старте — до запуска бота.
 

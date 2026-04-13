@@ -17,8 +17,16 @@ class LlmResult(str, Enum):
     DANGEROUS = "DANGEROUS"
 
 class LlmFilter:
-    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-haiku-4-5-20251001",
+        base_url: str = "",
+    ):
+        kwargs: dict = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        self._client = anthropic.AsyncAnthropic(**kwargs)
         self._model = model
 
     async def check(self, prompt: str) -> LlmResult:

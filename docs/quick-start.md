@@ -268,6 +268,68 @@ agents:
 
 Рестарт AG-OS → env не экспортируется (подписочный провайдер = пустой env) → но **старые переменные в окне всё ещё выставлены**, потому что мы не делаем `unset`. Чтобы откат сработал, нужно либо `tmux kill-window master` перед рестартом, либо в окне мастера вручную `unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL` и рестартнуть `claude`. Это известное ограничение v1.
 
+### 5.5. Prompt Guard на альтернативной модели
+
+LLM-уровень Prompt Guard (`guard/llm_filter.py`) — это Python-SDK-клиент, а не CLI, поэтому правила для него чуть другие, чем для агентов:
+
+- **Провайдер `claude_subscription` не применим.** `claude login` работает только для CLI; SDK Anthropic требует API-ключ. При попытке — fail-fast с понятной ошибкой на старте.
+- **`anthropic_api` и `anthropic_compatible` — оба поддерживаются.** Официальный SDK Anthropic (`anthropic.AsyncAnthropic`) принимает `base_url=...`, поэтому z.ai, MiniMax и локальная Ollama через litellm работают **без замены SDK**.
+- **Где прописать.** Поле `model_provider` в секции `guard`, ссылающееся на ключ из `model_providers`. Старое поле `haiku_api_key` остаётся для обратной совместимости, но одновременно с `model_provider` использовать нельзя — на старте упадёт с `set either ... or ..., not both`.
+- **Если `llm_enabled: true`, но ни `haiku_api_key`, ни `model_provider` не заданы** — AG-OS логирует warning и работает только с regex-фильтром. Никаких крашей, но уровень защиты ниже.
+
+**Пример — Haiku через официальный API:**
+
+```yaml
+guard:
+  enabled: true
+  llm_enabled: true
+  model_provider: "anthropic-api"
+
+model_providers:
+  anthropic-api:
+    provider: "anthropic_api"
+    api_key_env: "ANTHROPIC_API_KEY"
+    model_name: "claude-haiku-4-5"
+```
+
+**Пример — дешёвый GLM через z.ai:**
+
+```yaml
+guard:
+  enabled: true
+  llm_enabled: true
+  model_provider: "zai-glm-small"
+
+model_providers:
+  zai-glm-small:
+    provider: "anthropic_compatible"
+    base_url: "https://<endpoint-из-доки-zai>"
+    model_name: "glm-4.5-air"
+    api_key_env: "ZAI_API_KEY"
+```
+
+**Пример — локальная модель через litellm-прокси (full offline):**
+
+```yaml
+guard:
+  enabled: true
+  llm_enabled: true
+  model_provider: "ollama-guard"
+
+model_providers:
+  ollama-guard:
+    provider: "anthropic_compatible"
+    base_url: "http://litellm:4000"
+    model_name: "ollama/qwen2.5:7b"
+    api_key_env: "LITELLM_KEY"
+```
+
+**Что важно помнить:**
+
+- Guard вызывается на **каждое** входящее сообщение в Telegram. Бери быструю/дешёвую модель — Haiku, GLM-air, 7B-локалку. Sonnet/Opus здесь оверкилл.
+- Guard — не агент. Он не создаёт tmux-окно и не имеет памяти. Вся настройка — через `config.yaml` + env-переменную с ключом, как и для агентов.
+- При ошибке LLM-фильтра (таймаут, 5xx от провайдера) промт помечается как `SUSPICIOUS` — fail-safe. Это значит, что упавший гуард-эндпоинт не заблокирует всё общение, но и не пропустит опасное.
+
 ## 6. Юзкейс 1: всё на подписке Claude Code (baseline)
 
 **Когда:** ты только начинаешь, хочешь проверить, что стек работает, никаких альтернативных моделей.

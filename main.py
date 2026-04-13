@@ -2,10 +2,13 @@ import argparse
 import asyncio
 import logging
 
-from core.config import load_config
+from core.config import load_config, GuardConfig
 from core.agent_manager import AgentManager
 from core.models import AgentRuntime
 from db.database import Database
+from guard.llm_filter import LlmFilter
+from guard.prompt_guard import PromptGuard
+from guard.regex_filter import RegexFilter
 from runtime.tmux_runtime import TmuxRuntime
 from telegram.bot import create_bot
 
@@ -70,9 +73,41 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
     return manager, db, config
 
 
+def _build_guard(cfg: GuardConfig, manager: AgentManager, db: Database) -> PromptGuard | None:
+    if not cfg.enabled:
+        return None
+    regex = RegexFilter("guard/rules.yaml")
+    llm: LlmFilter | None = None
+    if cfg.llm_enabled:
+        if cfg.haiku_api_key and cfg.model_provider:
+            raise ValueError(
+                "guard: set either 'haiku_api_key' (legacy) or 'model_provider', not both"
+            )
+        if cfg.model_provider:
+            creds = manager.build_llm_credentials(cfg.model_provider)
+            llm_kwargs: dict = {
+                "api_key": creds["api_key"],
+                "base_url": creds["base_url"],
+            }
+            if creds["model_name"]:
+                llm_kwargs["model"] = creds["model_name"]
+            llm = LlmFilter(**llm_kwargs)
+            logger.info("Guard LLM filter: provider=%s", cfg.model_provider)
+        elif cfg.haiku_api_key:
+            llm = LlmFilter(api_key=cfg.haiku_api_key)
+            logger.info("Guard LLM filter: legacy haiku_api_key (consider migrating to model_provider)")
+        else:
+            logger.warning(
+                "Guard LLM filter enabled but neither 'haiku_api_key' nor 'model_provider' set — "
+                "running with regex-only protection"
+            )
+    return PromptGuard(regex_filter=regex, llm_filter=llm, db=db)
+
+
 async def run_bot(config_path: str):
-    manager, _db, config = await bootstrap(config_path)
-    app = create_bot(config.telegram, manager)
+    manager, db, config = await bootstrap(config_path)
+    guard = _build_guard(config.guard, manager, db)
+    app = create_bot(config.telegram, manager, guard=guard)
     logger.info("AG-OS bot starting...")
     await app.run_polling()
 
@@ -86,8 +121,9 @@ async def run_tui(config_path: str):
 
 
 async def run_all(config_path: str):
-    manager, _db, config = await bootstrap(config_path)
-    bot_app = create_bot(config.telegram, manager)
+    manager, db, config = await bootstrap(config_path)
+    guard = _build_guard(config.guard, manager, db)
+    bot_app = create_bot(config.telegram, manager, guard=guard)
     from tui.app import AgOsApp
     tui_app = AgOsApp(manager)
     logger.info("AG-OS starting (bot + TUI)...")
