@@ -13,6 +13,7 @@ class DockerRuntime(BaseRuntime):
         network: str = "bridge",
         workspace_base: str = "/data/ag-os/workspaces",
         shared_dir: str = "/data/ag-os/shared",
+        vault_base: str = "",
     ):
         self.prefix = prefix
         self.image = image
@@ -21,6 +22,7 @@ class DockerRuntime(BaseRuntime):
         self.network = network
         self.workspace_base = workspace_base
         self.shared_dir = shared_dir
+        self.vault_base = vault_base
         self._client = docker.from_env()
 
     def _container_name(self, name: str) -> str:
@@ -32,6 +34,9 @@ class DockerRuntime(BaseRuntime):
             f"{self.workspace_base}/{name}": {"bind": "/workspace", "mode": "rw"},
             self.shared_dir: {"bind": "/shared", "mode": "ro"},
         }
+        if self.vault_base:
+            volumes[f"{self.vault_base}/raw/{name}"] = {"bind": "/vault/raw/me", "mode": "rw"}
+            volumes[f"{self.vault_base}/wiki"] = {"bind": "/vault/wiki", "mode": "ro"}
         container = self._client.containers.run(
             self.image,
             command=command or "tail -f /dev/null",

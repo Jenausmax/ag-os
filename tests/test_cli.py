@@ -198,6 +198,72 @@ async def test_memory_forget(patched_init, capsys):
 # ─── dispatch ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
+async def test_vault_init_disabled_without_force(patched_init, monkeypatch, tmp_path, capsys):
+    import cli.commands as cmod
+    # patched_init returns a config with vault disabled by default (MagicMock)
+    # Need real VaultConfig to test. Override fake_init.
+    db, _ = patched_init
+    from core.config import VaultConfig
+    from core.agent_manager import AgentManager
+
+    vault_cfg = VaultConfig(enabled=False, base_path=str(tmp_path / "v"), git_enabled=False)
+    config = MagicMock()
+    config.vault = vault_cfg
+
+    async def fake_init(config_path, need_tmux=False, need_docker=False):
+        manager = AgentManager(db=db, tmux_runtime=None, docker_runtime=None, model_providers={})
+        return db, manager, config
+
+    monkeypatch.setattr(cmod, "init_core", fake_init)
+    rc = await cmod.vault_init(_args(force=False))
+    assert rc != 0
+
+
+@pytest.mark.asyncio
+async def test_vault_init_with_force_creates_structure(patched_init, monkeypatch, tmp_path, capsys):
+    import cli.commands as cmod
+    db, _ = patched_init
+    from core.config import VaultConfig
+    from core.agent_manager import AgentManager
+
+    vault_cfg = VaultConfig(enabled=False, base_path=str(tmp_path / "v"), git_enabled=False)
+    config = MagicMock()
+    config.vault = vault_cfg
+
+    async def fake_init(config_path, need_tmux=False, need_docker=False):
+        manager = AgentManager(db=db, tmux_runtime=None, docker_runtime=None, model_providers={})
+        return db, manager, config
+
+    monkeypatch.setattr(cmod, "init_core", fake_init)
+    rc = await cmod.vault_init(_args(force=True))
+    assert rc == 0
+    assert (tmp_path / "v" / "raw").is_dir()
+    assert (tmp_path / "v" / "wiki").is_dir()
+
+
+@pytest.mark.asyncio
+async def test_vault_path_agent(patched_init, monkeypatch, tmp_path, capsys):
+    import cli.commands as cmod
+    db, _ = patched_init
+    from core.config import VaultConfig
+    from core.agent_manager import AgentManager
+
+    vault_cfg = VaultConfig(enabled=True, base_path="/v", git_enabled=False)
+    config = MagicMock()
+    config.vault = vault_cfg
+
+    async def fake_init(config_path, need_tmux=False, need_docker=False):
+        manager = AgentManager(db=db, tmux_runtime=None, docker_runtime=None, model_providers={})
+        return db, manager, config
+
+    monkeypatch.setattr(cmod, "init_core", fake_init)
+    rc = await cmod.vault_path(_args(agent="researcher", wiki=False))
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    assert out.endswith("raw" + __import__("os").sep + "researcher") or out.endswith("raw/researcher")
+
+
+@pytest.mark.asyncio
 async def test_dispatch_unknown_mode(capsys):
     rc = await cli.dispatch(argparse.Namespace(mode="bogus", cmd="x"))
     assert rc != 0

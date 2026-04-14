@@ -71,3 +71,14 @@ scheduler:
 
 database:
   path: "/data/ag-os/db/ag-os.db"
+
+# Obsidian vault как knowledge base (AGOS-0031).
+# raw/<agent>/ — личный блокнот агента (writable только этим агентом).
+# wiki/ — курированные заметки, single-writer: только мастер.
+# Sub-агенты в docker получают /vault/raw/me как rw и /vault/wiki как ro.
+vault:
+  enabled: false
+  base_path: "/data/ag-os/vault"
+  raw_retention_days: 30
+  processing_cron: "0 3 * * *"   # ежедневный проход мастера в 03:00
+  git_enabled: true              # автоматический git init для аудита истории

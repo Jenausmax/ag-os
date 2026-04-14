@@ -46,12 +46,21 @@ class DatabaseConfig:
     path: str = "ag-os.db"
 
 @dataclass
+class VaultConfig:
+    enabled: bool = False
+    base_path: str = "/data/ag-os/vault"
+    raw_retention_days: int = 30
+    processing_cron: str = "0 3 * * *"
+    git_enabled: bool = True
+
+@dataclass
 class AppConfig:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     docker: DockerConfig = field(default_factory=DockerConfig)
     guard: GuardConfig = field(default_factory=GuardConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
+    vault: VaultConfig = field(default_factory=VaultConfig)
     model_providers: dict = field(default_factory=dict)
 
 def _dict_to_dataclass(cls, data: dict):

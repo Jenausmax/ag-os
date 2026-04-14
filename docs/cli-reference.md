@@ -146,6 +146,25 @@ python main.py memory forget --id 42
 
 Удаляет запись по id.
 
+## `vault` — Obsidian knowledge base (AGOS-0031)
+
+### `vault init`
+
+```
+python main.py vault init [--force]
+```
+
+Создаёт структуру `raw/<agent>/ wiki/ journal/` по пути из `config.vault.base_path`, при наличии git делает `git init`. Идемпотентно — повторный запуск не трогает существующие файлы. Без `--force` отказывается работать если `vault.enabled: false`.
+
+### `vault path`
+
+```
+python main.py vault path --agent researcher
+python main.py vault path --wiki
+```
+
+Печатает абсолютный путь до `raw/<agent>/` (по умолчанию) или до `wiki/` (с `--wiki`). Нужно когда мастер хочет узнать, куда писать, не хардкодя путь.
+
 ## Коды возврата
 
 - `0` — успех

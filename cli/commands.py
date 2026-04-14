@@ -58,6 +58,7 @@ async def init_core(
                 network=dd.network,
                 workspace_base=dd.workspace_base,
                 shared_dir=dd.shared_dir,
+                vault_base=config.vault.base_path if config.vault.enabled else "",
             )
         except Exception as e:
             print(f"WARN: docker runtime unavailable: {e}", file=sys.stderr)
@@ -320,6 +321,41 @@ async def memory_forget(args: argparse.Namespace) -> int:
         await db.close()
 
 
+# ─────────────────────────── vault commands ───────────────────────────
+
+
+async def vault_init(args: argparse.Namespace) -> int:
+    from core.vault import init_vault_structure
+    db, manager, config = await init_core(args.config)
+    try:
+        if not config.vault.enabled and not args.force:
+            return _fail("vault.enabled=false in config; pass --force to init anyway")
+        agents = await manager.list_agents()
+        names = [a["name"] for a in agents] or ["master"]
+        base = init_vault_structure(
+            config.vault.base_path,
+            agent_names=names,
+            git_enabled=config.vault.git_enabled,
+        )
+        print(f"vault initialized at {base}")
+        return 0
+    finally:
+        await db.close()
+
+
+async def vault_path(args: argparse.Namespace) -> int:
+    from core.vault import agent_raw_dir, wiki_dir
+    db, _manager, config = await init_core(args.config)
+    try:
+        if args.wiki:
+            print(wiki_dir(config.vault.base_path))
+            return 0
+        print(agent_raw_dir(config.vault.base_path, args.agent))
+        return 0
+    finally:
+        await db.close()
+
+
 # ─────────────────────────── argparse wiring ───────────────────────────
 
 
@@ -383,6 +419,17 @@ def register_cli_parsers(subparsers: argparse._SubParsersAction) -> None:
     mf = mem_sub.add_parser("forget", help="Delete a memory record by id")
     mf.add_argument("--id", type=int, required=True)
 
+    # vault
+    vault = subparsers.add_parser("vault", help="Obsidian vault management")
+    vault_sub = vault.add_subparsers(dest="cmd", required=True)
+
+    vi = vault_sub.add_parser("init", help="Create vault directory structure")
+    vi.add_argument("--force", action="store_true", help="Init even if vault.enabled=false")
+
+    vp = vault_sub.add_parser("path", help="Print absolute path to agent raw dir or wiki")
+    vp.add_argument("--agent", default="master")
+    vp.add_argument("--wiki", action="store_true", help="Print wiki path instead of agent raw")
+
 
 _DISPATCH = {
     ("agent", "create"): agent_create,
@@ -395,6 +442,8 @@ _DISPATCH = {
     ("memory", "remember"): memory_remember,
     ("memory", "get"): memory_get,
     ("memory", "forget"): memory_forget,
+    ("vault", "init"): vault_init,
+    ("vault", "path"): vault_path,
 }
 
 

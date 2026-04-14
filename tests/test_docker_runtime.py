@@ -100,6 +100,36 @@ def test_create_agent_passes_env(mock_docker):
     assert kwargs["environment"]["ANTHROPIC_AUTH_TOKEN"] == "k"
 
 
+def test_create_agent_vault_mounts(mock_docker):
+    container = MagicMock()
+    container.id = "abc123"
+    mock_docker.containers.run.return_value = container
+
+    runtime = DockerRuntime(prefix="ag-os", vault_base="/data/ag-os/vault")
+    runtime.create_agent("researcher")
+
+    volumes = mock_docker.containers.run.call_args.kwargs["volumes"]
+    raw_host = "/data/ag-os/vault/raw/researcher"
+    wiki_host = "/data/ag-os/vault/wiki"
+    assert raw_host in volumes
+    assert volumes[raw_host] == {"bind": "/vault/raw/me", "mode": "rw"}
+    assert wiki_host in volumes
+    assert volumes[wiki_host] == {"bind": "/vault/wiki", "mode": "ro"}
+
+
+def test_create_agent_no_vault_when_disabled(mock_docker):
+    container = MagicMock()
+    container.id = "abc123"
+    mock_docker.containers.run.return_value = container
+
+    runtime = DockerRuntime(prefix="ag-os")  # vault_base defaults to ""
+    runtime.create_agent("researcher")
+
+    volumes = mock_docker.containers.run.call_args.kwargs["volumes"]
+    for host_path in volumes:
+        assert "vault" not in host_path
+
+
 def test_create_agent_empty_env_default(mock_docker):
     container = MagicMock()
     container.id = "abc123"

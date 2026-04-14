@@ -5,9 +5,10 @@ import os
 import signal
 from pathlib import Path
 
-from core.config import load_config, GuardConfig
+from core.config import load_config, GuardConfig, VaultConfig
 from core.agent_manager import AgentManager
 from core.models import AgentRuntime
+from core.vault import init_vault_structure
 from db.database import Database
 from guard.llm_filter import LlmFilter
 from guard.prompt_guard import PromptGuard
@@ -73,7 +74,47 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
         elif runtime_enum == AgentRuntime.HOST:
             manager.apply_provider_env(agent_def["name"], provider, runtime_enum)
 
+    if config.vault.enabled:
+        agent_names = ["master"] + [a.get("name") for a in config.agents.permanent if a.get("name")]
+        init_vault_structure(
+            config.vault.base_path,
+            agent_names=[n for n in agent_names if n],
+            git_enabled=config.vault.git_enabled,
+        )
+        await _ensure_vault_processing_task(db, config.vault)
+
     return manager, db, config
+
+
+VAULT_TASK_MARKER = "[vault-processing]"
+
+
+async def _ensure_vault_processing_task(db: Database, vault_cfg: VaultConfig) -> None:
+    """Создаёт дефолтную cron-задачу для мастера по обработке raw → wiki.
+
+    Идемпотентно: ищет задачу с маркером в промте и не создаёт дубль. Retention
+    архива упаковано в тот же промт, чтобы не плодить второй cron.
+    """
+    existing = await db.fetch_one(
+        "SELECT id FROM schedule WHERE prompt LIKE ?",
+        (f"%{VAULT_TASK_MARKER}%",),
+    )
+    if existing:
+        return
+    prompt = (
+        f"{VAULT_TASK_MARKER} Обработай свежие файлы в {vault_cfg.base_path}/raw/*/ "
+        f"(кроме archive/): прочитай каждый, реши что заслуживает попадания в wiki — "
+        f"создай или обнови страницу в {vault_cfg.base_path}/wiki/ с frontmatter "
+        f"(owner, scope, created, tags) и `[[wiki-links]]` где уместно. "
+        f"Обработанные файлы перемести в {vault_cfg.base_path}/raw/archive/$(date +%F)/. "
+        f"Удали архивы старше {vault_cfg.raw_retention_days} дней. "
+        f"В конце сделай git commit с осмысленным сообщением."
+    )
+    await db.execute(
+        "INSERT INTO schedule (cron_expression, agent_name, prompt) VALUES (?, ?, ?)",
+        (vault_cfg.processing_cron, "master", prompt),
+    )
+    logger.info("Default vault processing cron task created (%s)", vault_cfg.processing_cron)
 
 
 PID_FILE = Path("ag-os.pid")
