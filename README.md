@@ -18,8 +18,12 @@
 **[docs/quick-start.md](docs/quick-start.md)**. Там пошагово расписано, что и в какой файл
 писать под каждый сценарий.
 
-Справка по CLI-подкомандам (`python main.py agent|schedule|memory ...`) —
+Справка по CLI-подкомандам (`python main.py agent|schedule|memory|vault ...`) —
 в **[docs/cli-reference.md](docs/cli-reference.md)**.
+
+Мастер-агент подгружает три скилла из `.claude/skills/agos-*` для управления
+агентами, планировщиком и Obsidian vault. Готовые промты-шаблоны для типовых
+запросов к мастеру — в **[docs/prompts/master-prompts.md](docs/prompts/master-prompts.md)**.
 
 ## Быстрый старт
 
