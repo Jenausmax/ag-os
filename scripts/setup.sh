@@ -72,20 +72,24 @@ detect_python() {
 }
 
 install_python_linux() {
-    if detect_python >/dev/null; then
-        return 0
-    fi
-    info "Python 3.11+ не найден, ставлю через apt..."
+    # Интерпретатор и venv — отдельные пакеты в Debian/Ubuntu (python3.X и
+    # python3.X-venv). Наличие первого не гарантирует второй. Ставим оба,
+    # даже если detect_python что-то уже нашёл.
+    info "Проверяю Python 3.11+ и venv-пакет..."
     sudo apt-get update
-    # На Ubuntu 24.04 (Noble) дефолт — 3.12. На 22.04 — 3.10+, 3.11 из стандартных репо.
-    # Пробуем 3.11 → 3.12 → generic python3.
+    # Предпочтение: 3.11 → 3.12 → generic python3.
+    local chosen=""
     if apt-cache show python3.11 >/dev/null 2>&1; then
         sudo apt-get install -y python3.11 python3.11-venv python3-pip
+        chosen="python3.11"
     elif apt-cache show python3.12 >/dev/null 2>&1; then
         sudo apt-get install -y python3.12 python3.12-venv python3-pip
+        chosen="python3.12"
     else
         sudo apt-get install -y python3 python3-venv python3-pip
+        chosen="python3"
     fi
+    ok "Python готов: $chosen"
 }
 
 install_nodejs_linux() {
