@@ -2,7 +2,7 @@
 id: AGOS-0029
 title: Hot-reload schedule без рестарта бота
 phase: 7 — Полировка
-status: pending
+status: completed
 depends_on: [AGOS-0027, AGOS-0028]
 files_create: []
 files_modify: [scheduler/scheduler.py, main.py, cli/commands.py, tests/test_scheduler.py, docs/quick-start.md]

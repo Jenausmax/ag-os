@@ -25,6 +25,10 @@ venv/
 # Environment
 .env
 
+# AG-OS runtime artefacts
+ag-os.pid
+.ag-os-reload
+
 # pytest
 .pytest_cache/
 

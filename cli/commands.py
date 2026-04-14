@@ -11,7 +11,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import signal
 import sys
+from pathlib import Path
 from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger
@@ -81,6 +84,38 @@ def _emit(obj: Any, as_json: bool) -> None:
 def _fail(message: str, code: int = 1) -> int:
     print(f"ERROR: {message}", file=sys.stderr)
     return code
+
+
+PID_FILE = Path("ag-os.pid")
+RELOAD_FLAG = Path(".ag-os-reload")
+
+
+def _notify_bot() -> None:
+    """Попросить живой бот перечитать таблицу schedule.
+
+    Unix — SIGUSR1 в PID из `ag-os.pid`. Windows — touch файла `.ag-os-reload`
+    (бот поллит его раз в 5 секунд). Если PID-файла нет или процесс мёртв —
+    warning в stderr, без падения: CLI-команда уже успешно изменила БД, бот
+    подхватит на рестарте.
+    """
+    if hasattr(signal, "SIGUSR1"):
+        if not PID_FILE.exists():
+            print(
+                "WARN: bot pid file not found — the running bot (if any) will "
+                "pick up the change on restart",
+                file=sys.stderr,
+            )
+            return
+        try:
+            pid = int(PID_FILE.read_text().strip())
+            os.kill(pid, signal.SIGUSR1)
+        except (ProcessLookupError, ValueError, PermissionError) as e:
+            print(f"WARN: could not signal bot ({e}); change applied to DB only", file=sys.stderr)
+    else:
+        try:
+            RELOAD_FLAG.touch()
+        except Exception as e:
+            print(f"WARN: could not create reload flag ({e}); change applied to DB only", file=sys.stderr)
 
 
 # ─────────────────────────── agent commands ───────────────────────────
@@ -165,6 +200,7 @@ async def schedule_add(args: argparse.Namespace) -> int:
             "INSERT INTO schedule (cron_expression, agent_name, prompt) VALUES (?, ?, ?)",
             (args.cron, args.agent, args.prompt),
         )
+        _notify_bot()
         if args.json:
             _emit({"id": task_id, "cron": args.cron, "agent": args.agent, "prompt": args.prompt}, True)
         else:
@@ -202,6 +238,7 @@ async def schedule_rm(args: argparse.Namespace) -> int:
         if not existing:
             return _fail(f"schedule task #{args.id} not found")
         await db.execute("DELETE FROM schedule WHERE id = ?", (args.id,))
+        _notify_bot()
         print(f"schedule task #{args.id} removed")
         return 0
     finally:

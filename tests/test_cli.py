@@ -203,6 +203,53 @@ async def test_dispatch_unknown_mode(capsys):
     assert rc != 0
 
 
+def test_notify_bot_no_pidfile_warns_unix(monkeypatch, capsys, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    if not hasattr(__import__("signal"), "SIGUSR1"):
+        pytest.skip("Unix-only path")
+    cli._notify_bot()
+    err = capsys.readouterr().err
+    assert "pid file" in err.lower()
+
+
+def test_notify_bot_sends_signal_unix(monkeypatch, tmp_path):
+    import signal as _signal
+    if not hasattr(_signal, "SIGUSR1"):
+        pytest.skip("Unix-only path")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ag-os.pid").write_text("99999")
+    sent = {}
+    def fake_kill(pid, sig):
+        sent["pid"] = pid
+        sent["sig"] = sig
+    monkeypatch.setattr("os.kill", fake_kill)
+    cli._notify_bot()
+    assert sent["pid"] == 99999
+    assert sent["sig"] == _signal.SIGUSR1
+
+
+def test_notify_bot_dead_process_unix(monkeypatch, capsys, tmp_path):
+    import signal as _signal
+    if not hasattr(_signal, "SIGUSR1"):
+        pytest.skip("Unix-only path")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ag-os.pid").write_text("99999")
+    def fake_kill(pid, sig):
+        raise ProcessLookupError("no such process")
+    monkeypatch.setattr("os.kill", fake_kill)
+    cli._notify_bot()
+    assert "could not signal" in capsys.readouterr().err.lower()
+
+
+def test_notify_bot_touches_flag_windows(monkeypatch, tmp_path):
+    import signal as _signal
+    if hasattr(_signal, "SIGUSR1"):
+        pytest.skip("Windows-only path")
+    monkeypatch.chdir(tmp_path)
+    cli._notify_bot()
+    assert (tmp_path / ".ag-os-reload").exists()
+
+
 def test_register_cli_parsers_smoke():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="mode")

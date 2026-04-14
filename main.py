@@ -1,6 +1,9 @@
 import argparse
 import asyncio
 import logging
+import os
+import signal
+from pathlib import Path
 
 from core.config import load_config, GuardConfig
 from core.agent_manager import AgentManager
@@ -73,6 +76,76 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
     return manager, db, config
 
 
+PID_FILE = Path("ag-os.pid")
+RELOAD_FLAG = Path(".ag-os-reload")
+
+
+def _write_pid_file() -> None:
+    try:
+        PID_FILE.write_text(str(os.getpid()))
+    except Exception as e:
+        logger.warning("Failed to write pid file %s: %s", PID_FILE, e)
+
+
+def _remove_pid_file() -> None:
+    try:
+        if PID_FILE.exists():
+            PID_FILE.unlink()
+    except Exception as e:
+        logger.warning("Failed to remove pid file %s: %s", PID_FILE, e)
+
+
+def _install_reload_handler(scheduler: AgScheduler) -> asyncio.Task | None:
+    """Подвязывает hot-reload шедулера под SIGUSR1 (Unix) или файл-флаг (Windows).
+
+    Возвращает фоновую задачу-вотчер (только на Windows), чтобы её можно было
+    отменить при shutdown.
+    """
+    loop = asyncio.get_running_loop()
+
+    async def _do_reload():
+        try:
+            report = await scheduler.reload_from_db()
+            if report.changed:
+                logger.info(
+                    "hot-reload: added=%s removed=%s updated=%s",
+                    report.added, report.removed, report.updated,
+                )
+        except Exception as e:
+            logger.error("hot-reload failed: %s", e)
+
+    if hasattr(signal, "SIGUSR1"):
+        def _handler():
+            asyncio.ensure_future(_do_reload())
+        try:
+            loop.add_signal_handler(signal.SIGUSR1, _handler)
+            logger.info("Hot-reload installed on SIGUSR1")
+        except NotImplementedError:
+            logger.warning("loop.add_signal_handler not supported; hot-reload disabled")
+        return None
+
+    # Windows fallback — файл-флаг
+    async def _watcher():
+        try:
+            RELOAD_FLAG.unlink(missing_ok=True)
+        except Exception:
+            pass
+        poll = 5.0
+        logger.info("Hot-reload installed on file flag %s (poll=%ss)", RELOAD_FLAG, poll)
+        while True:
+            try:
+                await asyncio.sleep(poll)
+                if RELOAD_FLAG.exists():
+                    RELOAD_FLAG.unlink(missing_ok=True)
+                    await _do_reload()
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.warning("reload watcher error: %s", e)
+
+    return loop.create_task(_watcher())
+
+
 def _build_guard(cfg: GuardConfig, manager: AgentManager, db: Database) -> PromptGuard | None:
     if not cfg.enabled:
         return None
@@ -110,15 +183,20 @@ async def run_bot(config_path: str):
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
     await scheduler.start()
+    watcher = _install_reload_handler(scheduler)
+    _write_pid_file()
     app = create_bot(config.telegram, manager, guard=guard, scheduler=scheduler)
     logger.info("AG-OS bot starting...")
     try:
         await app.run_polling()
     finally:
+        if watcher is not None:
+            watcher.cancel()
         try:
             scheduler.stop()
         except Exception as e:
             logger.warning("Scheduler shutdown error: %s", e)
+        _remove_pid_file()
 
 
 async def run_tui(config_path: str):
@@ -135,6 +213,8 @@ async def run_all(config_path: str):
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
     await scheduler.start()
+    watcher = _install_reload_handler(scheduler)
+    _write_pid_file()
     bot_app = create_bot(config.telegram, manager, guard=guard, scheduler=scheduler)
     from tui.app import AgOsApp
     tui_app = AgOsApp(manager)
@@ -145,10 +225,13 @@ async def run_all(config_path: str):
             tui_app.run_async(),
         )
     finally:
+        if watcher is not None:
+            watcher.cancel()
         try:
             scheduler.stop()
         except Exception as e:
             logger.warning("Scheduler shutdown error: %s", e)
+        _remove_pid_file()
 
 
 def main():
