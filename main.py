@@ -10,6 +10,7 @@ from guard.llm_filter import LlmFilter
 from guard.prompt_guard import PromptGuard
 from guard.regex_filter import RegexFilter
 from runtime.tmux_runtime import TmuxRuntime
+from scheduler.scheduler import AgScheduler
 from telegram.bot import create_bot
 
 logging.basicConfig(
@@ -107,9 +108,17 @@ def _build_guard(cfg: GuardConfig, manager: AgentManager, db: Database) -> Promp
 async def run_bot(config_path: str):
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
-    app = create_bot(config.telegram, manager, guard=guard)
+    scheduler = AgScheduler(db=db, agent_manager=manager)
+    await scheduler.start()
+    app = create_bot(config.telegram, manager, guard=guard, scheduler=scheduler)
     logger.info("AG-OS bot starting...")
-    await app.run_polling()
+    try:
+        await app.run_polling()
+    finally:
+        try:
+            scheduler.stop()
+        except Exception as e:
+            logger.warning("Scheduler shutdown error: %s", e)
 
 
 async def run_tui(config_path: str):
@@ -123,14 +132,22 @@ async def run_tui(config_path: str):
 async def run_all(config_path: str):
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
-    bot_app = create_bot(config.telegram, manager, guard=guard)
+    scheduler = AgScheduler(db=db, agent_manager=manager)
+    await scheduler.start()
+    bot_app = create_bot(config.telegram, manager, guard=guard, scheduler=scheduler)
     from tui.app import AgOsApp
     tui_app = AgOsApp(manager)
     logger.info("AG-OS starting (bot + TUI)...")
-    await asyncio.gather(
-        bot_app.run_polling(),
-        tui_app.run_async(),
-    )
+    try:
+        await asyncio.gather(
+            bot_app.run_polling(),
+            tui_app.run_async(),
+        )
+    finally:
+        try:
+            scheduler.stop()
+        except Exception as e:
+            logger.warning("Scheduler shutdown error: %s", e)
 
 
 def main():
