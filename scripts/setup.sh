@@ -54,6 +54,63 @@ ensure_data_dirs() {
     ok "Директории данных готовы: $DATA_ROOT"
 }
 
+detect_python() {
+    # Ищем python >= 3.11. Возвращает имя команды.
+    local py ver major minor
+    for py in python3.11 python3.12 python3.13 python3; do
+        if command -v "$py" >/dev/null 2>&1; then
+            ver="$("$py" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")"
+            major="${ver%%.*}"
+            minor="${ver##*.}"
+            if [ "$major" = "3" ] && [ "$minor" -ge 11 ] 2>/dev/null; then
+                echo "$py"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
+install_python_linux() {
+    if detect_python >/dev/null; then
+        return 0
+    fi
+    info "Python 3.11+ не найден, ставлю через apt..."
+    sudo apt-get update
+    # На Ubuntu 24.04 (Noble) дефолт — 3.12. На 22.04 — 3.10+, 3.11 из стандартных репо.
+    # Пробуем 3.11 → 3.12 → generic python3.
+    if apt-cache show python3.11 >/dev/null 2>&1; then
+        sudo apt-get install -y python3.11 python3.11-venv python3-pip
+    elif apt-cache show python3.12 >/dev/null 2>&1; then
+        sudo apt-get install -y python3.12 python3.12-venv python3-pip
+    else
+        sudo apt-get install -y python3 python3-venv python3-pip
+    fi
+}
+
+install_nodejs_linux() {
+    if command -v node >/dev/null 2>&1; then
+        ok "Node.js уже установлен: $(node --version 2>/dev/null || echo unknown)"
+        return 0
+    fi
+    info "Устанавливаю Node.js 20.x через NodeSource (нужен для Claude Code CLI)..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+}
+
+install_claude_cli() {
+    if command -v claude >/dev/null 2>&1; then
+        ok "Claude Code CLI уже установлен"
+        return 0
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        warn "npm не найден — пропускаю установку Claude Code CLI"
+        return 0
+    fi
+    info "Устанавливаю Claude Code CLI через npm..."
+    sudo npm install -g @anthropic-ai/claude-code
+}
+
 install_native() {
     info "Режим: native host"
     local os="$1"
@@ -62,19 +119,26 @@ install_native() {
         require_cmd brew || { err "Установи Homebrew: https://brew.sh"; exit 1; }
         brew list tmux >/dev/null 2>&1 || brew install tmux
         brew list python@3.11 >/dev/null 2>&1 || brew install python@3.11
+        brew list node >/dev/null 2>&1 || brew install node
     else
         require_cmd apt-get || { err "Поддерживается только apt-based дистрибутив"; exit 1; }
-        info "Ставлю tmux и python3.11 через apt..."
+        info "Ставлю базовые пакеты через apt..."
         sudo apt-get update
-        sudo apt-get install -y tmux python3.11 python3.11-venv python3-pip
+        sudo apt-get install -y tmux curl git ca-certificates
+        install_python_linux
+        install_nodejs_linux
     fi
 
-    require_cmd claude || warn "Claude Code CLI не найден. Установи: npm install -g @anthropic-ai/claude-code"
+    install_claude_cli
+
+    local PY
+    PY="$(detect_python)" || { err "Не удалось найти Python 3.11+ после установки"; exit 1; }
+    info "Использую Python: $PY ($("$PY" --version))"
 
     ensure_data_dirs
 
     info "Создаю venv в $PROJECT_ROOT/.venv"
-    python3.11 -m venv "$PROJECT_ROOT/.venv"
+    "$PY" -m venv "$PROJECT_ROOT/.venv"
     # shellcheck disable=SC1091
     source "$PROJECT_ROOT/.venv/bin/activate"
     pip install --upgrade pip
