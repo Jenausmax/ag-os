@@ -2,7 +2,7 @@
 id: AGOS-0028
 title: CLI control plane для self-automation мастера
 phase: 7 — Полировка
-status: pending
+status: completed
 depends_on: [AGOS-0027]
 files_create: [cli/__init__.py, cli/commands.py, tests/test_cli.py, docs/cli-reference.md]
 files_modify: [main.py, docs/quick-start.md]

@@ -11,7 +11,6 @@ from guard.prompt_guard import PromptGuard
 from guard.regex_filter import RegexFilter
 from runtime.tmux_runtime import TmuxRuntime
 from scheduler.scheduler import AgScheduler
-from telegram.bot import create_bot
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,6 +105,7 @@ def _build_guard(cfg: GuardConfig, manager: AgentManager, db: Database) -> Promp
 
 
 async def run_bot(config_path: str):
+    from telegram.bot import create_bot
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
@@ -130,6 +130,7 @@ async def run_tui(config_path: str):
 
 
 async def run_all(config_path: str):
+    from telegram.bot import create_bot
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
@@ -152,26 +153,27 @@ async def run_all(config_path: str):
 
 def main():
     parser = argparse.ArgumentParser(description="AG-OS: Multi-agent orchestrator")
-    parser.add_argument(
-        "mode",
-        choices=["bot", "tui", "all"],
-        default="bot",
-        nargs="?",
-        help="Run mode",
-    )
-    parser.add_argument(
-        "--config",
-        default="config.yaml",
-        help="Path to config file",
-    )
-    args = parser.parse_args()
+    parser.add_argument("--config", default="config.yaml", help="Path to config file")
 
-    if args.mode == "bot":
+    sub = parser.add_subparsers(dest="mode")
+    sub.add_parser("bot", help="Run Telegram bot")
+    sub.add_parser("tui", help="Run TUI dashboard")
+    sub.add_parser("all", help="Run bot + TUI in parallel")
+
+    from cli.commands import register_cli_parsers, run as cli_run
+    register_cli_parsers(sub)
+
+    args = parser.parse_args()
+    mode = args.mode or "bot"
+
+    if mode == "bot":
         asyncio.run(run_bot(args.config))
-    elif args.mode == "tui":
+    elif mode == "tui":
         asyncio.run(run_tui(args.config))
-    elif args.mode == "all":
+    elif mode == "all":
         asyncio.run(run_all(args.config))
+    else:
+        raise SystemExit(cli_run(args))
 
 
 if __name__ == "__main__":
