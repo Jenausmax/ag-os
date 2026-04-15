@@ -303,6 +303,55 @@ def test_build_llm_credentials_compatible_requires_base_url(db, mock_tmux, monke
 
 
 @pytest.mark.asyncio
+async def test_ensure_runtime_skips_when_alive(db, mock_tmux):
+    mock_tmux.agent_exists.return_value = True
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux)
+    await mgr.create_agent("master", "claude-cli", AgentRuntime.HOST)
+    mock_tmux.create_agent.reset_mock()
+    row = await mgr.get_agent("master")
+    resurrected = await mgr.ensure_runtime(row)
+    assert resurrected is False
+    mock_tmux.create_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_runtime_recreates_missing_window(db, mock_tmux):
+    mock_tmux.agent_exists.return_value = False
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux)
+    await mgr.create_agent("archivist", "claude-cli", AgentRuntime.HOST)
+    mock_tmux.create_agent.reset_mock()
+    row = await mgr.get_agent("archivist")
+    resurrected = await mgr.ensure_runtime(row)
+    assert resurrected is True
+    mock_tmux.create_agent.assert_called_once()
+    assert mock_tmux.create_agent.call_args.args[0] == "archivist"
+
+
+@pytest.mark.asyncio
+async def test_ensure_runtime_reuses_stored_provider(db, mock_tmux, monkeypatch):
+    monkeypatch.setenv("ZAI_KEY", "secret")
+    providers = {
+        "zai": {
+            "provider": "anthropic_compatible",
+            "base_url": "https://z.example",
+            "model_name": "glm-4.6",
+            "api_key_env": "ZAI_KEY",
+        }
+    }
+    mock_tmux.agent_exists.return_value = False
+    mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
+    await mgr.create_agent(
+        "coder", "glm", AgentRuntime.HOST, provider_name="zai",
+    )
+    mock_tmux.create_agent.reset_mock()
+    row = await mgr.get_agent("coder")
+    await mgr.ensure_runtime(row)
+    env = mock_tmux.create_agent.call_args.kwargs["env"]
+    assert env["ANTHROPIC_BASE_URL"] == "https://z.example"
+    assert env["ANTHROPIC_AUTH_TOKEN"] == "secret"
+
+
+@pytest.mark.asyncio
 async def test_list_agents(manager):
     await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)
     await manager.create_agent("code", "claude-cli", AgentRuntime.HOST)

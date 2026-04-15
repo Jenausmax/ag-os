@@ -143,6 +143,30 @@ class AgentManager:
         apply(name, env)
         logger.info("Re-applied provider '%s' env to agent '%s'", provider_name, name)
 
+    async def ensure_runtime(self, agent_row: dict) -> bool:
+        """Гарантировать что runtime-артефакт агента (tmux-окно / docker-контейнер) жив.
+
+        Вызывается из bootstrap для каждой строки БД: если окно/контейнер был
+        убит между рестартами AG-OS, пересоздаём его с теми же env-переменными
+        провайдера, что хранятся в config JSON записи агента. DB-строку не
+        трогаем — только runtime.
+
+        Возвращает True если был сделан resurrect (runtime пересоздан), False
+        если артефакт уже был живым.
+        """
+        name = agent_row["name"]
+        runtime = AgentRuntime(agent_row["runtime"])
+        rt = self._get_runtime(runtime)
+        if rt.agent_exists(name):
+            return False
+        stored_config = json.loads(agent_row.get("config") or "{}")
+        provider_name = stored_config.get("model_provider", "")
+        binding = self._resolve_binding(provider_name)
+        env = self._build_agent_env(binding)
+        rt.create_agent(name, env=env)
+        logger.info("Resurrected runtime for agent '%s' (%s)", name, runtime.value)
+        return True
+
     def _get_runtime(self, runtime: AgentRuntime) -> BaseRuntime:
         if runtime == AgentRuntime.HOST:
             if not self._tmux:

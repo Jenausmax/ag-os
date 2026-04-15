@@ -74,6 +74,15 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
         elif runtime_enum == AgentRuntime.HOST:
             manager.apply_provider_env(agent_def["name"], provider, runtime_enum)
 
+    # Финальный sweep: любые агенты из БД (включая созданных через CLI вне конфига),
+    # чьи tmux-окна или docker-контейнеры не пережили рестарт — пересоздаём runtime.
+    for agent_row in await manager.list_agents():
+        try:
+            if await manager.ensure_runtime(agent_row):
+                logger.info("Auto-resurrected runtime for '%s'", agent_row["name"])
+        except Exception as e:
+            logger.warning("Failed to resurrect agent '%s': %s", agent_row["name"], e)
+
     if config.vault.enabled:
         agent_names = ["master"] + [a.get("name") for a in config.agents.permanent if a.get("name")]
         init_vault_structure(
