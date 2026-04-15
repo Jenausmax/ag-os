@@ -63,6 +63,19 @@ def _load_token() -> str:
     )
 
 
+def _prefix_with_agent_name(text: str) -> str:
+    """Подставить имя агента в начало сообщения если доступно.
+
+    Имя берётся из env `AG_OS_AGENT_NAME` — AG-OS экспортирует его в окно
+    каждого агента при создании. Без него сообщение уходит без префикса
+    (старое поведение для ручных запусков и тестов).
+    """
+    name = os.environ.get("AG_OS_AGENT_NAME", "").strip()
+    if not name:
+        return text
+    return f"🤖 {name}\n\n{text}"
+
+
 @mcp.tool()
 async def telegram_reply(chat_id: int, text: str) -> dict[str, Any]:
     """Отправить сообщение в Telegram-чат от имени бота AG-OS.
@@ -70,7 +83,8 @@ async def telegram_reply(chat_id: int, text: str) -> dict[str, Any]:
     Используй этот тул, когда хочешь ответить пользователю, чьё сообщение
     обрабатываешь. `chat_id` берётся из префикса `[ag-os chat=<id> user=<name>]`
     в начале входящего промта — AG-OS подставляет его автоматически в каждое
-    сообщение.
+    сообщение. Имя агента-отправителя добавляется в начало автоматически
+    (через AG_OS_AGENT_NAME env), чтобы пользователь видел, кто отвечает.
 
     Args:
         chat_id: Целочисленный ID чата Telegram (из префикса входящего сообщения).
@@ -81,11 +95,12 @@ async def telegram_reply(chat_id: int, text: str) -> dict[str, Any]:
         Словарь с `ok: True` и `message_id` отправленного сообщения.
     """
     token = _load_token()
+    payload_text = _prefix_with_agent_name(text)
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=15.0) as client:
         response = await client.post(
             url,
-            json={"chat_id": chat_id, "text": text},
+            json={"chat_id": chat_id, "text": payload_text},
         )
         response.raise_for_status()
         data = response.json()

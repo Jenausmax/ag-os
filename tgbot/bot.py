@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from tgbot.handlers import (
     handle_message,
     handle_agents_command,
+    handle_pane_command,
     handle_schedule_add,
     handle_schedule_list,
     handle_schedule_rm,
@@ -37,7 +38,11 @@ def create_bot(
     async def on_agents(update, context):
         await handle_agents_command(update, context, manager, allowed)
 
+    async def on_pane(update, context):
+        await handle_pane_command(update, context, manager, allowed)
+
     app.add_handler(CommandHandler("agents", on_agents))
+    app.add_handler(CommandHandler("pane", on_pane))
 
     if scheduler is not None:
         async def on_schedule_add(update, context):

@@ -125,7 +125,7 @@ class AgentManager:
         контейнера env не меняется, надо пересоздавать агента).
         """
         binding = self._resolve_binding(provider_name)
-        env = self._build_agent_env(binding)
+        env = self._agent_launch_env(binding, name)
         if runtime != AgentRuntime.HOST:
             if env:
                 logger.warning(
@@ -142,6 +142,17 @@ class AgentManager:
             return
         apply(name, env)
         logger.info("Re-applied provider '%s' env to agent '%s'", provider_name, name)
+
+    def _agent_launch_env(self, binding: ModelBinding, agent_name: str) -> dict[str, str]:
+        """Собрать env для запуска tmux-окна агента.
+
+        Берёт провайдерские переменные из `_build_agent_env` и дополняет
+        `AG_OS_AGENT_NAME` — его читает MCP-бридж `telegram_reply`, чтобы
+        префиксить исходящие сообщения именем агента.
+        """
+        env = dict(self._build_agent_env(binding))
+        env["AG_OS_AGENT_NAME"] = agent_name
+        return env
 
     @staticmethod
     def _build_claude_command(extra_args: list[str] | None) -> str:
@@ -186,7 +197,7 @@ class AgentManager:
             rt.destroy_agent(name)
         provider_name = stored_config.get("model_provider", "")
         binding = self._resolve_binding(provider_name)
-        env = self._build_agent_env(binding)
+        env = self._agent_launch_env(binding, name)
         command = self._build_claude_command(desired)
         rt.create_agent(name, command=command, env=env)
         logger.info(
@@ -213,7 +224,7 @@ class AgentManager:
         stored_config = json.loads(agent_row.get("config") or "{}")
         provider_name = stored_config.get("model_provider", "")
         binding = self._resolve_binding(provider_name)
-        env = self._build_agent_env(binding)
+        env = self._agent_launch_env(binding, name)
         command = self._build_claude_command(stored_config.get("extra_args") or [])
         rt.create_agent(name, command=command, env=env)
         logger.info("Resurrected runtime for agent '%s' (%s)", name, runtime.value)
@@ -242,7 +253,7 @@ class AgentManager:
         if existing:
             raise ValueError(f"Agent '{name}' already exists")
         binding = self._resolve_binding(provider_name)
-        env = self._build_agent_env(binding)
+        env = self._agent_launch_env(binding, name)
         rt = self._get_runtime(runtime)
         command = self._build_claude_command(extra_args)
         rt.create_agent(name, command=command, env=env)
@@ -278,6 +289,19 @@ class AgentManager:
                 final_prompt = "\n".join(memory_lines) + "\n\n" + prompt
         rt.send_prompt(name, final_prompt)
         await self.db.execute("UPDATE agents SET status = ?, current_task = ? WHERE name = ?", (AgentStatus.WORKING.value, prompt, name))
+
+    async def send_raw(self, name: str, text: str) -> None:
+        """Отправить сырой ввод в окно агента без memory-преамбулы и context-тегов.
+
+        Используется командой /pane когда пользователь отвечает на застрявший
+        в pane вопрос (Y/N, меню 1/2/3). TmuxRuntime.send_prompt делает
+        send_keys(text), что эквивалентно набору текста + Enter.
+        """
+        agent = await self.get_agent(name)
+        if not agent:
+            raise ValueError(f"Agent '{name}' not found")
+        rt = self._get_runtime(AgentRuntime(agent["runtime"]))
+        rt.send_prompt(name, text)
 
     async def read_output(self, name: str, lines: int = 50) -> str:
         agent = await self.get_agent(name)
