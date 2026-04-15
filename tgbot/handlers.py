@@ -52,10 +52,11 @@ async def handle_message(
 
     # Если пользователь недавно запускал /pane и окно ждёт его ввод —
     # следующее текстовое сообщение отправляем сырым в tmux-пейн агента.
-    followup = (context.user_data or {}).get("pane_followup")
-    if followup and followup.get("expires_at", 0) > time.time():
+    user_data = context.user_data if isinstance(context.user_data, dict) else None
+    followup = user_data.get("pane_followup") if user_data else None
+    if isinstance(followup, dict) and followup.get("expires_at", 0) > time.time():
         target_agent = followup.get("agent", "master")
-        context.user_data.pop("pane_followup", None)
+        user_data.pop("pane_followup", None)
         try:
             await manager.send_raw(target_agent, text)
         except Exception as e:

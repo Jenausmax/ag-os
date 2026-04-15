@@ -125,7 +125,10 @@ class AgentManager:
         контейнера env не меняется, надо пересоздавать агента).
         """
         binding = self._resolve_binding(provider_name)
-        env = self._agent_launch_env(binding, name)
+        # apply_provider_env перевыставляет только учётные переменные провайдера
+        # в уже живом окне. AG_OS_AGENT_NAME выставляется при create_agent/
+        # ensure_runtime/apply_launch_args и не меняется — здесь не трогаем.
+        env = self._build_agent_env(binding)
         if runtime != AgentRuntime.HOST:
             if env:
                 logger.warning(

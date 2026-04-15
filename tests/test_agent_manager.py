@@ -109,7 +109,9 @@ async def test_create_agent_subscription_no_env(db, mock_tmux):
     mgr = AgentManager(db=db, tmux_runtime=mock_tmux, model_providers=providers)
     await mgr.create_agent("jira", "claude-cli", AgentRuntime.HOST, provider_name="claude-sub")
     kwargs = mock_tmux.create_agent.call_args.kwargs
-    assert kwargs["env"] == {}
+    # Subscription-провайдер не требует credentials env, но AG-OS всё равно
+    # экспортирует AG_OS_AGENT_NAME для MCP-брижа (префикс имени в ответах).
+    assert kwargs["env"] == {"AG_OS_AGENT_NAME": "jira"}
 
 
 @pytest.mark.asyncio
