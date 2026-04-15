@@ -17,6 +17,20 @@ def is_authorized(user_id: int, allowed_users: list[int]) -> bool:
     return user_id in allowed_users
 
 
+def build_context_preamble(update: Any) -> str:
+    """Однострочный префикс с chat_id и именем пользователя.
+
+    Мастер парсит его и передаёт в `telegram_reply(chat_id=..., text=...)`
+    при ответе через MCP. Формат: `[ag-os chat=<id> user=<name>]` — всё в
+    одну строку, потому что tmux send_keys трактует `\\n` как Enter и рвёт
+    многострочные промты.
+    """
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    who = (user.username or user.first_name or str(user.id)).replace(" ", "_")
+    return f"[ag-os chat={chat_id} user={who}]"
+
+
 async def handle_message(
     update: Any,
     context: Any,
@@ -46,7 +60,9 @@ async def handle_message(
             await update.message.reply_text(
                 f"⚠️ Подозрительный промт ({verdict.reason}), но пропущен."
             )
-    await manager.send_prompt(agent_name, prompt)
+    preamble = build_context_preamble(update)
+    final_prompt = f"{preamble} {prompt}"
+    await manager.send_prompt(agent_name, final_prompt)
     await update.message.reply_text(f"Промт отправлен агенту '{agent_name}'.")
 
 

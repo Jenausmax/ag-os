@@ -8,6 +8,7 @@ from tgbot.handlers import (
     handle_schedule_list,
     handle_schedule_rm,
     handle_schedule_run,
+    build_context_preamble,
 )
 from guard.prompt_guard import GuardVerdict
 
@@ -50,6 +51,59 @@ def make_manager_with_agent():
     manager = AsyncMock()
     manager.get_agent.return_value = {"name": "master", "status": "idle"}
     return manager
+
+
+def _make_update_with_chat(user_id: int, chat_id: int, text: str, username: str = "Max"):
+    update = MagicMock()
+    update.effective_user.id = user_id
+    update.effective_user.username = username
+    update.effective_user.first_name = username
+    update.effective_chat.id = chat_id
+    update.message.text = text
+    update.message.reply_text = AsyncMock()
+    return update
+
+
+def test_build_context_preamble_with_username():
+    update = _make_update_with_chat(1, 249402107, "hi", username="Max")
+    preamble = build_context_preamble(update)
+    assert preamble == "[ag-os chat=249402107 user=Max]"
+
+
+def test_build_context_preamble_falls_back_to_first_name():
+    update = MagicMock()
+    update.effective_chat.id = 42
+    update.effective_user.username = None
+    update.effective_user.first_name = "Vasya"
+    update.effective_user.id = 7
+    assert build_context_preamble(update) == "[ag-os chat=42 user=Vasya]"
+
+
+def test_build_context_preamble_falls_back_to_user_id():
+    update = MagicMock()
+    update.effective_chat.id = 42
+    update.effective_user.username = None
+    update.effective_user.first_name = None
+    update.effective_user.id = 7
+    assert build_context_preamble(update) == "[ag-os chat=42 user=7]"
+
+
+def test_build_context_preamble_replaces_spaces_in_name():
+    update = _make_update_with_chat(1, 42, "hi", username=None)
+    update.effective_user.username = None
+    update.effective_user.first_name = "Maxim Minaev"
+    assert build_context_preamble(update) == "[ag-os chat=42 user=Maxim_Minaev]"
+
+
+@pytest.mark.asyncio
+async def test_handle_message_prepends_context_preamble():
+    update = _make_update_with_chat(123, 249402107, "@master привет")
+    manager = AsyncMock()
+    manager.get_agent.return_value = {"name": "master", "status": "idle"}
+    await handle_message(update, MagicMock(), manager, [123])
+    sent = manager.send_prompt.call_args[0][1]
+    assert sent.startswith("[ag-os chat=249402107 user=Max] ")
+    assert sent.endswith("привет")
 
 
 @pytest.mark.asyncio
