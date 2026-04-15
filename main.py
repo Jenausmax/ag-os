@@ -53,6 +53,7 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
             runtime=AgentRuntime.HOST,
             agent_type="permanent",
             provider_name=master_provider,
+            extra_args=list(config.agents.master.extra_args),
         )
         logger.info("Master agent created (provider=%s)", master_provider or "claude-subscription")
     else:
@@ -69,6 +70,7 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
                 runtime=runtime_enum,
                 agent_type="permanent",
                 provider_name=provider,
+                extra_args=list(agent_def.get("extra_args") or []),
             )
             logger.info(f"Permanent agent '{agent_def['name']}' created")
         elif runtime_enum == AgentRuntime.HOST:

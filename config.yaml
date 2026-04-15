@@ -10,6 +10,11 @@ agents:
     runtime: "host"
     type: "permanent"
     # model_provider: "claude-sub"   # ссылка на ключ из model_providers ниже
+    # extra_args: дополнительные CLI-флаги к `claude` при старте tmux-окна.
+    # Применяется только для host/tmux runtime; в docker игнорируется.
+    # Пример — стартовать мастер с пропуском подтверждений всех действий:
+    #   extra_args: ["--dangerously-skip-permissions"]
+    extra_args: []
   permanent: []
 
 # Провайдеры моделей для sub-агентов. Ключи используются в поле

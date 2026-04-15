@@ -143,6 +143,18 @@ class AgentManager:
         apply(name, env)
         logger.info("Re-applied provider '%s' env to agent '%s'", provider_name, name)
 
+    @staticmethod
+    def _build_claude_command(extra_args: list[str] | None) -> str:
+        """Собрать команду запуска claude CLI с дополнительными аргументами.
+
+        Пустой результат означает: использовать дефолтный запуск `claude`
+        без флагов (поведение TmuxRuntime когда command пустой).
+        """
+        if not extra_args:
+            return ""
+        import shlex
+        return "claude " + " ".join(shlex.quote(a) for a in extra_args)
+
     async def ensure_runtime(self, agent_row: dict) -> bool:
         """Гарантировать что runtime-артефакт агента (tmux-окно / docker-контейнер) жив.
 
@@ -163,7 +175,8 @@ class AgentManager:
         provider_name = stored_config.get("model_provider", "")
         binding = self._resolve_binding(provider_name)
         env = self._build_agent_env(binding)
-        rt.create_agent(name, env=env)
+        command = self._build_claude_command(stored_config.get("extra_args") or [])
+        rt.create_agent(name, command=command, env=env)
         logger.info("Resurrected runtime for agent '%s' (%s)", name, runtime.value)
         return True
 
@@ -184,6 +197,7 @@ class AgentManager:
         agent_type: str = "dynamic",
         config: dict | None = None,
         provider_name: str = "",
+        extra_args: list[str] | None = None,
     ) -> dict:
         existing = await self.db.fetch_one("SELECT id FROM agents WHERE name = ?", (name,))
         if existing:
@@ -191,10 +205,13 @@ class AgentManager:
         binding = self._resolve_binding(provider_name)
         env = self._build_agent_env(binding)
         rt = self._get_runtime(runtime)
-        rt.create_agent(name, env=env)
+        command = self._build_claude_command(extra_args)
+        rt.create_agent(name, command=command, env=env)
         stored_config = dict(config or {})
         if provider_name:
             stored_config["model_provider"] = provider_name
+        if extra_args:
+            stored_config["extra_args"] = list(extra_args)
         await self.db.execute(
             "INSERT INTO agents (name, model, runtime, type, status, tmux_window, config) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (name, model, runtime.value, agent_type, AgentStatus.IDLE.value, name if runtime == AgentRuntime.HOST else "", json.dumps(stored_config)),

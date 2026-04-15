@@ -15,6 +15,10 @@ class AgentDef:
     runtime: str = "host"
     type: str = "permanent"
     model_provider: str = ""
+    # Дополнительные CLI-аргументы к `claude` при старте окна.
+    # Пример: ["--dangerously-skip-permissions"]. Применяется только
+    # для host/tmux runtime; в docker игнорируется.
+    extra_args: list[str] = field(default_factory=list)
 
 @dataclass
 class AgentsConfig:
