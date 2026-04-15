@@ -229,8 +229,16 @@ async def run_bot(config_path: str):
     app = create_bot(config.telegram, manager, guard=guard, scheduler=scheduler)
     logger.info("AG-OS bot starting...")
     try:
-        await app.run_polling()
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
     finally:
+        if app.updater and app.updater.running:
+            await app.updater.stop()
+        if app.running:
+            await app.stop()
+        await app.shutdown()
         if watcher is not None:
             watcher.cancel()
         try:
@@ -261,11 +269,16 @@ async def run_all(config_path: str):
     tui_app = AgOsApp(manager)
     logger.info("AG-OS starting (bot + TUI)...")
     try:
-        await asyncio.gather(
-            bot_app.run_polling(),
-            tui_app.run_async(),
-        )
+        await bot_app.initialize()
+        await bot_app.start()
+        await bot_app.updater.start_polling()
+        await tui_app.run_async()
     finally:
+        if bot_app.updater and bot_app.updater.running:
+            await bot_app.updater.stop()
+        if bot_app.running:
+            await bot_app.stop()
+        await bot_app.shutdown()
         if watcher is not None:
             watcher.cancel()
         try:
