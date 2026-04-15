@@ -54,6 +54,25 @@ ensure_data_dirs() {
     ok "Директории данных готовы: $DATA_ROOT"
 }
 
+detect_python() {
+    # Ищем первый подходящий python >=3.11. Возвращает имя команды в stdout.
+    local candidates=(python3.13 python3.12 python3.11 python3)
+    for cmd in "${candidates[@]}"; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            local ver
+            ver="$("$cmd" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo "")"
+            if [ -z "$ver" ]; then continue; fi
+            local major="${ver%%.*}"
+            local minor="${ver##*.}"
+            if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 11 ]; }; then
+                echo "$cmd"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
 install_native() {
     info "Режим: native host"
     local os="$1"
@@ -61,20 +80,41 @@ install_native() {
     if [ "$os" = "macos" ]; then
         require_cmd brew || { err "Установи Homebrew: https://brew.sh"; exit 1; }
         brew list tmux >/dev/null 2>&1 || brew install tmux
-        brew list python@3.11 >/dev/null 2>&1 || brew install python@3.11
+        if ! detect_python >/dev/null; then
+            info "Подходящий python не найден — ставлю python@3.11 через brew..."
+            brew install python@3.11
+        fi
     else
         require_cmd apt-get || { err "Поддерживается только apt-based дистрибутив"; exit 1; }
-        info "Ставлю tmux и python3.11 через apt..."
+        info "Ставлю tmux через apt..."
         sudo apt-get update
-        sudo apt-get install -y tmux python3.11 python3.11-venv python3-pip
+        sudo apt-get install -y tmux python3-pip
+        if ! detect_python >/dev/null; then
+            info "Подходящий python (>=3.11) не найден — пробую поставить python3.11..."
+            sudo apt-get install -y python3.11 python3.11-venv || {
+                err "Не удалось поставить python3.11. Установи Python >=3.11 вручную (например, через deadsnakes PPA)."
+                exit 1
+            }
+        fi
+        local py
+        py="$(detect_python)"
+        # Убедимся, что у выбранного python есть модуль venv
+        if ! "$py" -c 'import venv' >/dev/null 2>&1; then
+            info "Ставлю пакет venv для $py..."
+            sudo apt-get install -y "${py}-venv" || warn "Не удалось поставить ${py}-venv — возможно, уже входит в python3"
+        fi
     fi
 
     require_cmd claude || warn "Claude Code CLI не найден. Установи: npm install -g @anthropic-ai/claude-code"
 
     ensure_data_dirs
 
-    info "Создаю venv в $PROJECT_ROOT/.venv"
-    python3.11 -m venv "$PROJECT_ROOT/.venv"
+    local python_bin
+    python_bin="$(detect_python)" || { err "Нужен Python >=3.11"; exit 1; }
+    local python_ver
+    python_ver="$("$python_bin" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+    info "Использую $python_bin (Python $python_ver) для venv в $PROJECT_ROOT/.venv"
+    "$python_bin" -m venv "$PROJECT_ROOT/.venv"
     # shellcheck disable=SC1091
     source "$PROJECT_ROOT/.venv/bin/activate"
     pip install --upgrade pip
