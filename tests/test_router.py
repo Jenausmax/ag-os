@@ -1,4 +1,4 @@
-from telegram.router import parse_message
+from tgbot.router import parse_message
 
 
 def test_parse_tagged_message():

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
-from telegram.handlers import (
+from tgbot.handlers import (
     is_authorized,
     handle_message,
     handle_agents_command,

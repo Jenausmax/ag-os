@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from telegram.handlers import (
+from tgbot.handlers import (
     handle_message,
     handle_agents_command,
     handle_schedule_add,

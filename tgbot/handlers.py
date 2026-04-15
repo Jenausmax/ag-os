@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from apscheduler.triggers.cron import CronTrigger
 
-from telegram.router import parse_message
+from tgbot.router import parse_message
 from core.agent_manager import AgentManager
 from guard.prompt_guard import PromptGuard
 from scheduler.scheduler import AgScheduler

@@ -219,7 +219,7 @@ def _build_guard(cfg: GuardConfig, manager: AgentManager, db: Database) -> Promp
 
 
 async def run_bot(config_path: str):
-    from telegram.bot import create_bot
+    from tgbot.bot import create_bot
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
@@ -249,7 +249,7 @@ async def run_tui(config_path: str):
 
 
 async def run_all(config_path: str):
-    from telegram.bot import create_bot
+    from tgbot.bot import create_bot
     manager, db, config = await bootstrap(config_path)
     guard = _build_guard(config.guard, manager, db)
     scheduler = AgScheduler(db=db, agent_manager=manager)
