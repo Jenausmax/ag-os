@@ -58,6 +58,11 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
         logger.info("Master agent created (provider=%s)", master_provider or "claude-subscription")
     else:
         manager.apply_provider_env("master", master_provider, AgentRuntime.HOST)
+        await manager.apply_launch_args(
+            "master",
+            list(config.agents.master.extra_args),
+            AgentRuntime.HOST,
+        )
 
     for agent_def in config.agents.permanent:
         existing = await manager.get_agent(agent_def["name"])
@@ -75,6 +80,11 @@ async def bootstrap(config_path: str) -> tuple[AgentManager, Database, object]:
             logger.info(f"Permanent agent '{agent_def['name']}' created")
         elif runtime_enum == AgentRuntime.HOST:
             manager.apply_provider_env(agent_def["name"], provider, runtime_enum)
+            await manager.apply_launch_args(
+                agent_def["name"],
+                list(agent_def.get("extra_args") or []),
+                runtime_enum,
+            )
 
     # Финальный sweep: любые агенты из БД (включая созданных через CLI вне конфига),
     # чьи tmux-окна или docker-контейнеры не пережили рестарт — пересоздаём runtime.

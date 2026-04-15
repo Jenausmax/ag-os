@@ -155,6 +155,45 @@ class AgentManager:
         import shlex
         return "claude " + " ".join(shlex.quote(a) for a in extra_args)
 
+    async def apply_launch_args(
+        self,
+        name: str,
+        extra_args: list[str],
+        runtime: AgentRuntime,
+    ) -> bool:
+        """Синхронизировать extra_args агента с конфигом.
+
+        Если сохранённые в БД `extra_args` отличаются от переданных —
+        обновляет запись и пересоздаёт runtime-окно (destroy + create),
+        чтобы новые флаги запуска claude действительно применились.
+        Возвращает True если было пересоздание, False если no-op.
+        """
+        agent = await self.get_agent(name)
+        if not agent:
+            return False
+        stored_config = json.loads(agent.get("config") or "{}")
+        current = list(stored_config.get("extra_args") or [])
+        desired = list(extra_args or [])
+        if current == desired:
+            return False
+        stored_config["extra_args"] = desired
+        await self.db.execute(
+            "UPDATE agents SET config = ? WHERE name = ?",
+            (json.dumps(stored_config), name),
+        )
+        rt = self._get_runtime(runtime)
+        if rt.agent_exists(name):
+            rt.destroy_agent(name)
+        provider_name = stored_config.get("model_provider", "")
+        binding = self._resolve_binding(provider_name)
+        env = self._build_agent_env(binding)
+        command = self._build_claude_command(desired)
+        rt.create_agent(name, command=command, env=env)
+        logger.info(
+            "Re-launched agent '%s' with new extra_args: %s", name, desired
+        )
+        return True
+
     async def ensure_runtime(self, agent_row: dict) -> bool:
         """Гарантировать что runtime-артефакт агента (tmux-окно / docker-контейнер) жив.
 
