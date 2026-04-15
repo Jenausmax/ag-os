@@ -32,6 +32,33 @@ def test_create_agent(mock_server):
     assert result == window.name
 
 
+def test_create_agent_auto_starts_claude_by_default(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    window = MagicMock()
+    pane = MagicMock()
+    window.active_pane = pane
+    session.new_window.return_value = window
+    runtime = TmuxRuntime("ag-os")
+    runtime.create_agent("researcher")
+    calls = [c.args[0] for c in pane.send_keys.call_args_list]
+    assert "claude" in calls
+
+
+def test_create_agent_custom_command_overrides_default(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    window = MagicMock()
+    pane = MagicMock()
+    window.active_pane = pane
+    session.new_window.return_value = window
+    runtime = TmuxRuntime("ag-os")
+    runtime.create_agent("x", command="claude --model sonnet")
+    calls = [c.args[0] for c in pane.send_keys.call_args_list]
+    assert "claude --model sonnet" in calls
+    assert "claude" not in calls  # дефолт не вызван
+
+
 def test_destroy_agent(mock_server):
     server, session = mock_server
     server.sessions.filter.return_value = [session]
