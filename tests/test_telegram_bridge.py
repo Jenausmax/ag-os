@@ -78,3 +78,48 @@ async def test_telegram_reply_api_error(monkeypatch):
     with patch("mcp_servers.telegram_bridge.httpx.AsyncClient", return_value=client):
         with pytest.raises(RuntimeError, match="Telegram API error"):
             await bridge.telegram_reply(chat_id=0, text="hi")
+
+
+# ─────────────────── AGOS-0040: agent name prefix ───────────────────
+
+def test_prefix_with_agent_name_unset(monkeypatch):
+    monkeypatch.delenv("AG_OS_AGENT_NAME", raising=False)
+    assert bridge._prefix_with_agent_name("hello") == "hello"
+
+
+def test_prefix_with_agent_name_set(monkeypatch):
+    monkeypatch.setenv("AG_OS_AGENT_NAME", "finik")
+    prefixed = bridge._prefix_with_agent_name("готов")
+    assert prefixed.startswith("🤖 finik")
+    assert prefixed.endswith("готов")
+    assert "\n\n" in prefixed
+
+
+def test_prefix_with_agent_name_blank_env_is_noop(monkeypatch):
+    monkeypatch.setenv("AG_OS_AGENT_NAME", "   ")
+    assert bridge._prefix_with_agent_name("x") == "x"
+
+
+@pytest.mark.asyncio
+async def test_telegram_reply_prepends_agent_name(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "999:xyz")
+    monkeypatch.setenv("AG_OS_AGENT_NAME", "master")
+
+    fake_response = MagicMock()
+    fake_response.raise_for_status = MagicMock()
+    fake_response.json.return_value = {
+        "ok": True,
+        "result": {"message_id": 77},
+    }
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.__aexit__.return_value = None
+    client.post = AsyncMock(return_value=fake_response)
+
+    with patch("mcp_servers.telegram_bridge.httpx.AsyncClient", return_value=client):
+        await bridge.telegram_reply(chat_id=42, text="done")
+
+    sent = client.post.call_args.kwargs["json"]
+    assert sent["chat_id"] == 42
+    assert sent["text"].startswith("🤖 master")
+    assert sent["text"].endswith("done")

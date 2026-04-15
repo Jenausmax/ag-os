@@ -1,14 +1,17 @@
+import time
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from tgbot.handlers import (
     is_authorized,
     handle_message,
     handle_agents_command,
+    handle_pane_command,
     handle_schedule_add,
     handle_schedule_list,
     handle_schedule_rm,
     handle_schedule_run,
     build_context_preamble,
+    PANE_FOLLOWUP_TIMEOUT,
 )
 from guard.prompt_guard import GuardVerdict
 
@@ -288,3 +291,92 @@ async def test_handle_agents_command():
     reply = update.message.reply_text.call_args[0][0]
     assert "master" in reply
     assert "jira" in reply
+
+
+# ─────────────────────────── /pane (AGOS-0040) ────────────────────────────
+
+def _pane_context(args: list[str], user_data: dict | None = None):
+    ctx = MagicMock()
+    ctx.args = args
+    ctx.user_data = user_data if user_data is not None else {}
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_handle_pane_command_unauthorized():
+    update = make_update(999, "/pane")
+    manager = AsyncMock()
+    await handle_pane_command(update, _pane_context([]), manager, [123])
+    manager.read_output.assert_not_called()
+    update.message.reply_text.assert_called_once()
+    assert "авторизован" in update.message.reply_text.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_pane_command_unknown_agent():
+    update = make_update(123, "/pane ghost")
+    manager = AsyncMock()
+    manager.get_agent.return_value = None
+    await handle_pane_command(update, _pane_context(["ghost"]), manager, [123])
+    update.message.reply_text.assert_called_once()
+    assert "ghost" in update.message.reply_text.call_args[0][0]
+    manager.read_output.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_pane_command_default_agent_is_master():
+    update = make_update(123, "/pane")
+    manager = AsyncMock()
+    manager.get_agent.return_value = {"name": "master", "status": "idle"}
+    manager.read_output.return_value = "line1\nline2\n❯ 1. Dark\n   2. Light"
+    ctx = _pane_context([])
+    await handle_pane_command(update, ctx, manager, [123])
+    manager.get_agent.assert_awaited_once_with("master")
+    manager.read_output.assert_awaited_once()
+    assert ctx.user_data["pane_followup"]["agent"] == "master"
+    assert ctx.user_data["pane_followup"]["expires_at"] > time.time()
+    reply = update.message.reply_text.call_args[0][0]
+    assert "master" in reply
+    assert "Dark" in reply
+
+
+@pytest.mark.asyncio
+async def test_handle_pane_command_named_agent_sets_followup():
+    update = make_update(123, "/pane finik")
+    manager = AsyncMock()
+    manager.get_agent.return_value = {"name": "finik", "status": "idle"}
+    manager.read_output.return_value = "(y/N)?"
+    ctx = _pane_context(["finik"])
+    await handle_pane_command(update, ctx, manager, [123])
+    assert ctx.user_data["pane_followup"]["agent"] == "finik"
+
+
+@pytest.mark.asyncio
+async def test_handle_message_pane_followup_sends_raw():
+    update = _make_update_with_chat(123, 42, "1")
+    manager = AsyncMock()
+    ctx = MagicMock()
+    ctx.user_data = {
+        "pane_followup": {"agent": "master", "expires_at": time.time() + 60},
+    }
+    await handle_message(update, ctx, manager, [123])
+    manager.send_raw.assert_awaited_once_with("master", "1")
+    manager.send_prompt.assert_not_called()
+    assert "pane_followup" not in ctx.user_data
+    update.message.reply_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_message_pane_followup_expired_falls_through():
+    update = _make_update_with_chat(123, 42, "@master привет")
+    manager = AsyncMock()
+    manager.get_agent.return_value = {"name": "master", "status": "idle"}
+    ctx = MagicMock()
+    ctx.user_data = {
+        "pane_followup": {"agent": "master", "expires_at": time.time() - 10},
+    }
+    await handle_message(update, ctx, manager, [123])
+    manager.send_raw.assert_not_called()
+    manager.send_prompt.assert_awaited_once()
+    sent = manager.send_prompt.call_args[0][1]
+    assert sent.endswith("привет")
