@@ -28,6 +28,7 @@ venv/
 # AG-OS runtime artefacts
 ag-os.pid
 .ag-os-reload
+logs/
 
 # pytest
 .pytest_cache/

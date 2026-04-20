@@ -1,6 +1,6 @@
 telegram:
-  token: ""
-  allowed_users: []
+  token: "${TELEGRAM_TOKEN}"
+  allowed_users: "${TELEGRAM_ALLOWED_USERS}"
 
 agents:
   session_name: "ag-os"
@@ -14,7 +14,7 @@ agents:
     # Применяется только для host/tmux runtime; в docker игнорируется.
     # Пример — стартовать мастер с пропуском подтверждений всех действий:
     #   extra_args: ["--dangerously-skip-permissions"]
-    extra_args: []
+    extra_args: ["--dangerously-skip-permissions"]
   permanent: []
 
 # Провайдеры моделей для sub-агентов. Ключи используются в поле
@@ -37,7 +37,12 @@ model_providers:
   #   base_url: "https://<endpoint-из-доки-zai>"
   #   model_name: "glm-4.6"
   #   api_key_env: "ZAI_API_KEY"
-
+# MiniMax — anthropic-совместимый эндпоинт.
+  minimax:
+    provider: "anthropic_compatible"
+    base_url: "https://api.minimax.io/anthropic"
+    model_name: "MiniMax-M2.7"
+    api_key_env: "MINIMAX_API_KEY"
   # MiniMax — anthropic-совместимый эндпоинт.
   # minimax:
   #   provider: "anthropic_compatible"
@@ -61,7 +66,7 @@ docker:
     shared_dir: "/data/ag-os/shared"
 
 guard:
-  enabled: true
+  enabled: false
   llm_enabled: true
   # Один из двух вариантов (не оба):
   #   1) legacy: явный ключ Anthropic Haiku.
@@ -82,7 +87,7 @@ database:
 # wiki/ — курированные заметки, single-writer: только мастер.
 # Sub-агенты в docker получают /vault/raw/me как rw и /vault/wiki как ro.
 vault:
-  enabled: false
+  enabled: true
   base_path: "/data/ag-os/vault"
   raw_retention_days: 30
   processing_cron: "0 3 * * *"   # ежедневный проход мастера в 03:00

@@ -5,6 +5,10 @@ import os
 import signal
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from core.config import load_config, GuardConfig, VaultConfig
 from core.agent_manager import AgentManager
 from core.models import AgentRuntime

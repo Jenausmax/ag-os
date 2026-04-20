@@ -1,3 +1,5 @@
+import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 import yaml
@@ -85,10 +87,34 @@ def _dict_to_dataclass(cls, data: dict):
             kwargs[key] = value
     return cls(**kwargs)
 
+_ENV_PATTERN = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)\}")
+
+
+def _expand_env(value):
+    if isinstance(value, str):
+        return _ENV_PATTERN.sub(lambda m: os.environ.get(m.group(1), ""), value)
+    if isinstance(value, dict):
+        return {k: _expand_env(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env(v) for v in value]
+    return value
+
+
+def _coerce_allowed_users(raw: dict) -> None:
+    tg = raw.get("telegram")
+    if not isinstance(tg, dict):
+        return
+    users = tg.get("allowed_users")
+    if isinstance(users, str):
+        tg["allowed_users"] = [int(x) for x in users.split(",") if x.strip()]
+
+
 def load_config(path: str) -> AppConfig:
     config_path = Path(path)
     if not config_path.exists():
         return AppConfig()
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
+    raw = _expand_env(raw)
+    _coerce_allowed_users(raw)
     return _dict_to_dataclass(AppConfig, raw)
