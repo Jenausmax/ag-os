@@ -362,3 +362,16 @@ async def test_list_agents(manager):
     names = [a["name"] for a in agents]
     assert "jira" in names
     assert "code" in names
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_clear_context_delegates_to_runtime(manager, mock_tmux):
+    await manager.create_agent("jira", "claude-cli", AgentRuntime.HOST)
+    await manager.clear_context("jira")
+    mock_tmux.clear_context.assert_called_once_with("jira")
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_clear_context_unknown_agent_raises(manager):
+    with pytest.raises(ValueError, match="not found"):
+        await manager.clear_context("nonexistent")

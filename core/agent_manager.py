@@ -293,6 +293,13 @@ class AgentManager:
         rt.send_prompt(name, final_prompt)
         await self.db.execute("UPDATE agents SET status = ?, current_task = ? WHERE name = ?", (AgentStatus.WORKING.value, prompt, name))
 
+    async def clear_context(self, name: str) -> None:
+        agent = await self.get_agent(name)
+        if not agent:
+            raise ValueError(f"Agent '{name}' not found")
+        rt = self._get_runtime(AgentRuntime(agent["runtime"]))
+        rt.clear_context(name)
+
     async def send_raw(self, name: str, text: str) -> None:
         """Отправить сырой ввод в окно агента без memory-преамбулы и context-тегов.
 
