@@ -159,15 +159,16 @@ async def test_execute_task_skips_tick_when_clear_fails(scheduler):
     scheduler.manager.send_prompt = AsyncMock()
     scheduler.manager.get_agent = AsyncMock(return_value={"name": "master"})
 
-    task = {"id": 101, "agent_name": "master", "prompt": "hello", "clear_before": 1}
+    task_id = await scheduler.add_task("0 9 * * *", "master", "hello", clear_before=True)
+    tasks = await scheduler.list_tasks()
+    task = next(t for t in tasks if t["id"] == task_id)
+
     await scheduler._execute_task(task)
 
     scheduler.manager.send_prompt.assert_not_called()
-    # _update_result вызовет db.execute — проверяем через db
+
     tasks = await scheduler.list_tasks()
-    # задача не в БД (мы не добавляли), но _update_result должен был отработать без краша
-    # Главное — send_prompt не был вызван
-    scheduler.manager.send_prompt.assert_not_called()
+    assert tasks[0]["last_result"] == "error"
 
 
 @pytest.mark.asyncio
