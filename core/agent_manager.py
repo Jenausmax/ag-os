@@ -294,6 +294,11 @@ class AgentManager:
         await self.db.execute("UPDATE agents SET status = ?, current_task = ? WHERE name = ?", (AgentStatus.WORKING.value, prompt, name))
 
     async def clear_context(self, name: str) -> None:
+        """Сбросить REPL-контекст агента (делегирует runtime.clear_context).
+
+        Используется планировщиком перед запуском cron-задачи, если у задачи
+        установлен флаг clear_before=True.
+        """
         agent = await self.get_agent(name)
         if not agent:
             raise ValueError(f"Agent '{name}' not found")
