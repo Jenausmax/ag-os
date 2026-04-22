@@ -14,7 +14,16 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         schema = SCHEMA_PATH.read_text()
         await self._conn.executescript(schema)
+        await self._ensure_schedule_clear_before()
         await self._conn.commit()
+
+    async def _ensure_schedule_clear_before(self) -> None:
+        cur = await self._conn.execute("PRAGMA table_info(schedule)")
+        cols = {row[1] for row in await cur.fetchall()}
+        if "clear_before" not in cols:
+            await self._conn.execute(
+                "ALTER TABLE schedule ADD COLUMN clear_before INTEGER NOT NULL DEFAULT 1"
+            )
 
     async def close(self):
         if self._conn:

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS schedule (
     agent_name TEXT NOT NULL,
     prompt TEXT NOT NULL,
     enabled INTEGER DEFAULT 1,
+    clear_before INTEGER NOT NULL DEFAULT 1,
     last_run TIMESTAMP,
     last_result TEXT DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
