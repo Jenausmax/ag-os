@@ -267,6 +267,11 @@ async def schedule_run(args: argparse.Namespace) -> int:
         agent = await manager.get_agent(task["agent_name"])
         if not agent:
             return _fail(f"agent '{task['agent_name']}' no longer exists")
+        if bool(task.get("clear_before", 1)):
+            try:
+                await manager.clear_context(task["agent_name"])
+            except Exception as exc:
+                print(f"warning: clear_context failed: {exc}; continuing", file=sys.stderr)
         await manager.send_prompt(task["agent_name"], task["prompt"])
         print(f"schedule task #{args.id} executed (prompt sent to @{task['agent_name']})")
         return 0

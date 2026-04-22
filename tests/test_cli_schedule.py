@@ -3,7 +3,7 @@ import argparse
 import json
 import pytest
 import pytest_asyncio
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from cli import commands as cli
 from db.database import Database
@@ -201,3 +201,79 @@ def test_argparse_no_clear_flag_registered():
         "--prompt", "test",
     ])
     assert ns2.no_clear is False
+
+
+# ─── Тест 7: schedule_run вызывает clear_context при clear_before=1 ───────────
+
+@pytest.mark.asyncio
+async def test_schedule_run_calls_clear_context_when_flag_set(patched_init, monkeypatch):
+    """schedule_run вызывает clear_context и send_prompt когда clear_before=1."""
+    db, _ = patched_init
+    await _create_master((db, _))
+
+    # Добавляем задачу через schedule_add (clear_before=1 по умолчанию)
+    rc = await cli.schedule_add(_args(
+        cron="0 * * * *",
+        agent="master",
+        prompt="cron prompt",
+        no_clear=False,
+    ))
+    assert rc == 0
+
+    row = await db.fetch_one("SELECT id FROM schedule ORDER BY id DESC LIMIT 1")
+    task_id = row["id"]
+
+    # Создаём мок-менеджер с нужными методами
+    mock_manager = MagicMock()
+    mock_manager.get_agent = AsyncMock(return_value={"name": "master"})
+    mock_manager.clear_context = AsyncMock()
+    mock_manager.send_prompt = AsyncMock()
+
+    async def fake_init_with_mock(config_path, need_tmux=False, need_docker=False):
+        return db, mock_manager, MagicMock()
+
+    monkeypatch.setattr(cli, "init_core", fake_init_with_mock)
+
+    rc = await cli.schedule_run(_args(id=task_id))
+    assert rc == 0
+
+    mock_manager.clear_context.assert_called_once_with("master")
+    mock_manager.send_prompt.assert_called_once_with("master", "cron prompt")
+
+
+# ─── Тест 8: schedule_run НЕ вызывает clear_context при clear_before=0 ────────
+
+@pytest.mark.asyncio
+async def test_schedule_run_skips_clear_when_flag_false(patched_init, monkeypatch):
+    """schedule_run не вызывает clear_context когда clear_before=0 (--no-clear)."""
+    db, _ = patched_init
+    await _create_master((db, _))
+
+    # Добавляем задачу с --no-clear (clear_before=0)
+    rc = await cli.schedule_add(_args(
+        cron="0 * * * *",
+        agent="master",
+        prompt="no-clear prompt",
+        no_clear=True,
+    ))
+    assert rc == 0
+
+    row = await db.fetch_one("SELECT id FROM schedule ORDER BY id DESC LIMIT 1")
+    task_id = row["id"]
+
+    # Создаём мок-менеджер
+    mock_manager = MagicMock()
+    mock_manager.get_agent = AsyncMock(return_value={"name": "master"})
+    mock_manager.clear_context = AsyncMock()
+    mock_manager.send_prompt = AsyncMock()
+
+    async def fake_init_with_mock(config_path, need_tmux=False, need_docker=False):
+        return db, mock_manager, MagicMock()
+
+    monkeypatch.setattr(cli, "init_core", fake_init_with_mock)
+
+    rc = await cli.schedule_run(_args(id=task_id))
+    assert rc == 0
+
+    mock_manager.clear_context.assert_not_called()
+    mock_manager.send_prompt.assert_called_once_with("master", "no-clear prompt")
