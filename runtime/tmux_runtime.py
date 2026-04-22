@@ -1,3 +1,5 @@
+import asyncio
+
 import libtmux
 from runtime.base import BaseRuntime
 
@@ -58,3 +60,10 @@ class TmuxRuntime(BaseRuntime):
 
     def agent_exists(self, name: str) -> bool:
         return bool(self._session.windows.filter(window_name=name))
+
+    async def clear_context(self, name: str) -> None:
+        windows = self._session.windows.filter(window_name=name)
+        if not windows:
+            raise ValueError(f"Agent '{name}' not found")
+        windows[0].active_pane.send_keys("/clear")
+        await asyncio.sleep(0.3)

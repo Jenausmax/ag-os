@@ -141,3 +141,26 @@ def test_list_agents(mock_server):
     session.windows = [w1, w2]
     runtime = TmuxRuntime("ag-os")
     assert runtime.list_agents() == ["master", "jira"]
+
+
+@pytest.mark.asyncio
+async def test_clear_context_sends_clear(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    window = MagicMock()
+    pane = MagicMock()
+    window.active_pane = pane
+    session.windows.filter.return_value = [window]
+    runtime = TmuxRuntime("ag-os")
+    await runtime.clear_context("jira")
+    pane.send_keys.assert_called_once_with("/clear")
+
+
+@pytest.mark.asyncio
+async def test_clear_context_missing_agent_raises(mock_server):
+    server, session = mock_server
+    server.sessions.filter.return_value = [session]
+    session.windows.filter.return_value = []
+    runtime = TmuxRuntime("ag-os")
+    with pytest.raises(ValueError, match="not found"):
+        await runtime.clear_context("ghost")

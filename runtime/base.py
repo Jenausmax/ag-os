@@ -29,3 +29,7 @@ class BaseRuntime(ABC):
     @abstractmethod
     def agent_exists(self, name: str) -> bool:
         """Проверить существует ли агент."""
+
+    @abstractmethod
+    async def clear_context(self, name: str) -> None:
+        """Сбросить REPL-контекст агента. No-op, если runtime stateless (Docker batch)."""
