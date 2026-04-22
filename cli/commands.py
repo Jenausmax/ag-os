@@ -223,7 +223,10 @@ async def schedule_list(args: argparse.Namespace) -> int:
     try:
         tasks = await db.fetch_all("SELECT * FROM schedule ORDER BY id")
         if args.json:
-            _emit([dict(t) for t in tasks], True)
+            _emit(
+                [{**dict(t), "clear_before": bool(t["clear_before"])} for t in tasks],
+                True,
+            )
             return 0
         if not tasks:
             print("(no scheduled tasks)")

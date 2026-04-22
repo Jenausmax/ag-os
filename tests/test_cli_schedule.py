@@ -174,6 +174,7 @@ async def test_schedule_list_json_includes_clear_before(patched_init, capsys):
     tasks = json.loads(out)
     assert len(tasks) == 1
     assert "clear_before" in tasks[0]
+    assert tasks[0]["clear_before"] is True
 
 
 # ─── Тест 6: argparse --no-clear флаг регистрируется ─────────────────────────
