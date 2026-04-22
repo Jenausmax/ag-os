@@ -154,11 +154,10 @@ def test_send_prompt_escapes_quotes(mock_docker):
     assert '\\"world\\"' in cmd
 
 
-@pytest.mark.asyncio
-async def test_clear_context_is_noop(mock_docker):
+def test_clear_context_is_noop(mock_docker):
     runtime = DockerRuntime(prefix="ag-os")
     # Должен отработать без исключений и не вызвать ни одного метода docker-клиента
-    await runtime.clear_context("test")
+    runtime.clear_context("test")
     mock_docker.containers.get.assert_not_called()
     mock_docker.containers.run.assert_not_called()
     mock_docker.containers.list.assert_not_called()

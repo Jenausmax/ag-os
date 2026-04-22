@@ -84,6 +84,6 @@ class DockerRuntime(BaseRuntime):
         except docker.errors.NotFound:
             return False
 
-    async def clear_context(self, name: str) -> None:
+    def clear_context(self, name: str) -> None:
         # No-op: DockerRuntime использует batch-режим (claude -p), контекста между вызовами нет.
         return

@@ -1,7 +1,9 @@
-import asyncio
+import time
 
 import libtmux
 from runtime.base import BaseRuntime
+
+_CLEAR_SETTLE_SECS = 0.3  # дать REPL Claude обработать /clear до следующего send_keys
 
 
 class TmuxRuntime(BaseRuntime):
@@ -61,9 +63,9 @@ class TmuxRuntime(BaseRuntime):
     def agent_exists(self, name: str) -> bool:
         return bool(self._session.windows.filter(window_name=name))
 
-    async def clear_context(self, name: str) -> None:
+    def clear_context(self, name: str) -> None:
         windows = self._session.windows.filter(window_name=name)
         if not windows:
             raise ValueError(f"Agent '{name}' not found")
         windows[0].active_pane.send_keys("/clear")
-        await asyncio.sleep(0.3)
+        time.sleep(_CLEAR_SETTLE_SECS)
