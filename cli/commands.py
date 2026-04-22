@@ -197,13 +197,20 @@ async def schedule_add(args: argparse.Namespace) -> int:
         # Доступ к AgScheduler через прямой INSERT, потому что в CLI нам не нужен
         # живой APScheduler — живой бот подхватит запись на рестарте (или по
         # AGOS-0029 hot-reload).
+        clear_before = 0 if getattr(args, "no_clear", False) else 1
         task_id = await db.execute(
-            "INSERT INTO schedule (cron_expression, agent_name, prompt) VALUES (?, ?, ?)",
-            (args.cron, args.agent, args.prompt),
+            "INSERT INTO schedule (cron_expression, agent_name, prompt, clear_before) VALUES (?, ?, ?, ?)",
+            (args.cron, args.agent, args.prompt, clear_before),
         )
         _notify_bot()
         if args.json:
-            _emit({"id": task_id, "cron": args.cron, "agent": args.agent, "prompt": args.prompt}, True)
+            _emit({
+                "id": task_id,
+                "cron": args.cron,
+                "agent": args.agent,
+                "prompt": args.prompt,
+                "clear_before": bool(clear_before),
+            }, True)
         else:
             print(f"schedule task #{task_id} added")
         return 0
@@ -223,8 +230,9 @@ async def schedule_list(args: argparse.Namespace) -> int:
             return 0
         for t in tasks:
             enabled = "ON" if t.get("enabled") else "OFF"
+            clear_flag = "C" if t.get("clear_before", 1) else "-"
             print(
-                f"#{t['id']:<4} [{enabled}] {t['cron_expression']:18s} "
+                f"#{t['id']:<4} [{enabled}] [{clear_flag}] {t['cron_expression']:18s} "
                 f"@{t['agent_name']:15s} → {t['prompt'][:60]}"
             )
         return 0
@@ -389,6 +397,10 @@ def register_cli_parsers(subparsers: argparse._SubParsersAction) -> None:
     sa.add_argument("--agent", required=True)
     sa.add_argument("--prompt", required=True)
     sa.add_argument("--json", action="store_true")
+    sa.add_argument(
+        "--no-clear", action="store_true",
+        help="Do NOT clear agent context before each tick (default: clear)",
+    )
 
     sl = sch_sub.add_parser("list", help="List scheduled tasks")
     sl.add_argument("--json", action="store_true")
