@@ -39,10 +39,12 @@ class AgScheduler:
     def stop(self):
         self._scheduler.shutdown(wait=False)
 
-    async def add_task(self, cron_expression: str, agent_name: str, prompt: str) -> int:
+    async def add_task(self, cron_expression: str, agent_name: str, prompt: str,
+                       clear_before: bool = True) -> int:
         task_id = await self.db.execute(
-            "INSERT INTO schedule (cron_expression, agent_name, prompt) VALUES (?, ?, ?)",
-            (cron_expression, agent_name, prompt),
+            "INSERT INTO schedule (cron_expression, agent_name, prompt, clear_before) "
+            "VALUES (?, ?, ?, ?)",
+            (cron_expression, agent_name, prompt, 1 if clear_before else 0),
         )
         task = await self.db.fetch_one("SELECT * FROM schedule WHERE id = ?", (task_id,))
         if self._scheduler.running:
@@ -81,6 +83,7 @@ class AgScheduler:
             "cron_expression": task["cron_expression"],
             "agent_name": task["agent_name"],
             "prompt": task["prompt"],
+            "clear_before": task.get("clear_before", 1),
         }
 
     def _unregister_job(self, task_id: int) -> None:
@@ -100,6 +103,7 @@ class AgScheduler:
             live["cron_expression"] != db_task["cron_expression"]
             or live["agent_name"] != db_task["agent_name"]
             or live["prompt"] != db_task["prompt"]
+            or live.get("clear_before", 1) != db_task.get("clear_before", 1)
         )
 
     async def reload_from_db(self) -> ReloadReport:
@@ -136,12 +140,23 @@ class AgScheduler:
     async def _execute_task(self, task: dict):
         agent_name = task["agent_name"]
         prompt = task["prompt"]
+        clear_before = bool(task.get("clear_before", 1))
         try:
             agent = await self.manager.get_agent(agent_name)
             if not agent:
                 logger.warning(f"Scheduled task {task['id']}: agent '{agent_name}' not found")
                 await self._update_result(task["id"], "error")
                 return
+            if clear_before:
+                try:
+                    await self.manager.clear_context(agent_name)
+                except Exception as e:
+                    logger.warning(
+                        f"Scheduled task {task['id']}: clear_context failed for "
+                        f"'{agent_name}': {e}; skipping tick"
+                    )
+                    await self._update_result(task["id"], "error")
+                    return
             await self.manager.send_prompt(agent_name, prompt)
             await self._update_result(task["id"], "success")
         except Exception as e:
